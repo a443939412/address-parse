@@ -53,5 +53,5 @@ MIT. Please see the [license file](license.md) for more information.
 [link-downloads]: https://packagist.org/packages/zifan/addressparser
 [link-travis]: https://travis-ci.org/zifan/addressparser
 [link-styleci]: https://styleci.io/repos/12345678
-[link-author]: https://github.com/zifan
+[link-author]: https://github.com/a443939412
 [link-contributors]: ../../contributors
