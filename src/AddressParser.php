@@ -4,6 +4,13 @@ namespace Zifan\AddressParser;
 
 use Zifan\AddressParser\Models\Area;
 
+/**
+ * Class AddressParser
+ * @link https://www.cnblogs.com/gqx-html/p/10790464.html
+ * @link https://github.com/pupuk/address-smart-parse
+ *
+ * 
+ */
 class AddressParser
 {
     /*
