@@ -102,6 +102,9 @@ class AddressParser
         return static::$areas;
     }
 
+    /**
+     * @return DataProviderInterface
+     */
     protected function dateProvider(): DataProviderInterface
     {
         $driver = $this->config['dataProvider'] ?? null;
@@ -220,7 +223,7 @@ class AddressParser
     {
         $result = compact('province', 'city', 'district');
 
-        if ($this->config['strict'] ?? false) {
+        if (empty($this->config['strict'])) {
             return $result;
         }
 
@@ -228,7 +231,7 @@ class AddressParser
 
         if ($province) {
             $this->recursiveCorrectAsc($areas, $result);
-            return $result;
+            goto end;
         }
         // else
         if ($city) {
@@ -258,6 +261,7 @@ class AddressParser
             }
         }
 
+        end: $result['address'] = $address;
         /**
          * @FIXME 识别失败：
          * 甘肃省东乡族自治县布楞沟村1号
@@ -324,7 +328,7 @@ class AddressParser
         $a1 = '';
         $a2 = '';
         $a3 = '';
-        $street = '';
+        $address = '';
 
         if (mb_strpos($addr, '县') !== false && mb_strpos($addr, '县') < floor((mb_strlen($addr) / 3) * 2) ||
             mb_strpos($addr, '区') !== false && mb_strpos($addr, '区') < floor((mb_strlen($addr) / 3) * 2) ||
@@ -364,23 +368,23 @@ class AddressParser
                     }
                 }
             }
-            $street = mb_substr($addr_origin, $deep3_keyword_pos + 1);
+            $address = mb_substr($addr_origin, $deep3_keyword_pos + 1);
         } else {
             if (mb_strripos($addr, '市')) {
 
                 if (mb_substr_count($addr, '市') == 1) {
                     $deep3_keyword_pos = mb_strripos($addr, '市');
                     $a3 = mb_substr($addr, $deep3_keyword_pos - 2, 3);
-                    $street = mb_substr($addr_origin, $deep3_keyword_pos + 1);
+                    $address = mb_substr($addr_origin, $deep3_keyword_pos + 1);
                 } else if (mb_substr_count($addr, '市') >= 2) {
                     $deep3_keyword_pos = mb_strripos($addr, '市');
                     $a3 = mb_substr($addr, $deep3_keyword_pos - 2, 3);
-                    $street = mb_substr($addr_origin, $deep3_keyword_pos + 1);
+                    $address = mb_substr($addr_origin, $deep3_keyword_pos + 1);
                 }
             } else {
 
                 $a3 = '';
-                $street = $addr;
+                $address = $addr;
             }
         }
 
@@ -405,7 +409,7 @@ class AddressParser
             'province' => $a1,
             'city' => $a2,
             'district' => $a3,
-            'street' => $street,
+            'address' => $address,
         );
 
         return $this->correct(...array_values($r));
