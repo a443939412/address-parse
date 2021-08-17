@@ -27,7 +27,9 @@ $ composer require zifan/addressparser
 
 ## Usage
 
-\Zifan\AddressParser\AddressParser::smart('浙江省杭州市滨江区西兴街道滨康路228号万福中心A座21楼');
+$parser = new AddressParser();
+
+$parser->smart('浙江省杭州市滨江区西兴街道滨康路228号万福中心A座21楼');
 
 ## Change log
 
