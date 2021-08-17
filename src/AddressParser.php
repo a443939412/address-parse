@@ -2,98 +2,316 @@
 
 namespace Zifan\AddressParser;
 
-use Zifan\AddressParser\Models\Area;
+use Symfony\Component\Process\Exception\InvalidArgumentException;
 
 /**
  * Class AddressParser
  * @link https://www.cnblogs.com/gqx-html/p/10790464.html
  * @link https://github.com/pupuk/address-smart-parse
- *
- * 
+ * @link https://ai.baidu.com/tech/nlp_apply/address?track=cp:ainsem|pf:pc|pp:chanpin-NLP|pu:NLP-dizhishibie|ci:|kw:10014588 #“百度地址识别：实现了姓名、街道维度的提取
  */
 class AddressParser
 {
-    /*
-    ** 智能解析
-     * @TODO 使用config('addressparser.decompose_user_info_keywords')
-    */
-    public function smart(string $address, bool $has_user_info = true)
+    /**
+     * The AddressParser version.
+     *
+     * @var string
+     */
+    const VERSION = '2.0.0';
+
+    /**
+     * @var array|\ArrayAccess
+     */
+    protected static $areas = [];
+
+    /**
+     * @var array
+     */
+    protected $config = [
+        'dataProvider' => [
+            'driver' => 'file'
+        ]
+    ];
+
+    /**
+     * AddressParser constructor.
+     * @param array $options 配置项请参考 config 方法
+     * @see config()
+     */
+    public function __construct(array $options = [])
     {
-        if ($has_user_info) {
-            $decompose = self::decompose($address);
-            $re = $decompose;
-        } else {
-            $re['addr'] = $address;
-        }
-
-        $fuzz = self::fuzz($re['addr']);
-        $parse = self::parse($fuzz['a1'], $fuzz['a2'], $fuzz['a3']);
-
-        $re['province'] = $parse['province'];
-        $re['city'] = $parse['city'];
-        $re['region'] = $parse['region'];
-
-        $re['street'] = ($fuzz['street']) ? $fuzz['street'] : '';
-        $re['street'] = str_replace([$re['region'], $re['city'], $re['province']], ['', '', ''], $re['street']);
-
-        return $re;
+        $this->config($options);
     }
 
-    /*
-    ** 分离手机号(座机)，身份证号，姓名等用户信息
-    */
-    public static function decompose($string)
+    /**
+     * @param array $options Like: [
+     *     'dataProvider' => [
+     *         'driver' => 'file'
+     *     ],
+     *     'province_city_level_region_max_length' => 11,   // 省、市级地名的最大字符长度11 （黔西南布依族苗族自治州、克孜勒苏柯尔克孜自治州）
+     *     'interference_words' => [],    // 干扰词
+     *     'extra' => [                   // 额外提取字段
+     *         'sub_district' => false,   // 村乡镇/街道（准确度低）
+     *         'idn' => false,            // 身份证号
+     *         'mobile' => false,         // 联系方式（手机号/座机号）
+     *         'postcode' => false,       // 邮编
+     *         'person' => false,         // 姓名（准确度低）
+     *     ],
+     *     'strict' => true,              // 是否对提取结果进行准确度校验
+     * ]
+     * @return $this
+     */
+    public function config(array $options)
     {
-        $compose = array();
+        $this->config = array_replace_recursive($this->config, $options);
 
-        $search = array('收货地址', '详细地址', '地址', '收货人', '收件人', '收货', '所在地区', '邮编', '电话', '手机号码','身份证号码', '身份证号', '身份证', '：', ':', '；', ';', '，', ',', '。');
-        $replace = array(' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ');
-        $string = str_replace($search, $replace, $string);
+        return $this;
+    }
 
-        $string = preg_replace('/\s{1,}/', ' ', $string);
-
-        $string = preg_replace('/0-|0?(\d{3})-(\d{4})-(\d{4})/', '$1$2$3', $string);
-
-        preg_match('/\d{18}|\d{17}X/i', $string, $match);
-        if ($match && $match[0]) {
-            $compose['idn'] = strtoupper($match[0]);
-            $string = str_replace($match[0], '', $string);
+    /**
+     * @return array|\ArrayAccess Like: [
+     *     0 => [
+     *         'id' => 1,
+     *         'name' => '北京',
+     *         'parent_id' => 0,
+     *         'level' => 1,
+     *         'children' => [
+     *             [
+     *                 'id' => 33, 'name' => '北京市', 'parent_id' => 1, 'level' => 2,
+     *                 'children' => [...]
+     *             ]
+     *         ]
+     *     ],
+     *     ...
+     * ]
+     */
+    public function getAreas()
+    {
+        if (empty(static::$areas)) {
+            static::$areas = $this->dateProvider()->toTree();
         }
 
-        preg_match('/\d{7,11}|\d{3,4}-\d{6,8}/', $string, $match);
-        if ($match && $match[0]) {
-            $compose['mobile'] = $match[0];
-            $string = str_replace($match[0], '', $string);
+        // Validate data tree
+        $first = current(static::$areas);
+        if (!isset($first['name']) ||
+            !isset($first['children']) ||
+            !isset(current($first['children'])['name'])) {
+            throw new InvalidArgumentException('驱动提供的数据，不符合插件要求的树形结构！');
         }
 
-        preg_match('/\d{6}/', $string, $match);
-        if ($match && $match[0]) {
-            $compose['postcode'] = $match[0];
-            $string = str_replace($match[0], '', $string);
+        return static::$areas;
+    }
+
+    protected function dateProvider(): DataProviderInterface
+    {
+        $driver = $this->config['dataProvider'] ?? null;
+
+        if (empty($driver['driver'])) {
+            throw new InvalidArgumentException('未设置数据驱动，请前往addressparser.dataProvider.driver设置');
         }
 
-        $string = trim(preg_replace('/ {2,}/', ' ', $string));
+        return (new DataProvider)->resolve($driver);
+    }
 
-        $split_arr = explode(' ', $string);
-        if (count($split_arr) > 1) {
-            $compose['name'] = $split_arr[0];
-            foreach ($split_arr as $value) {
-                if (strlen($value) < strlen($compose['name'])) {
-                    $compose['name'] = $value;
+    /**
+     * @return $this
+     */
+    public function release()
+    {
+        static::$areas = null;
+
+        return $this;
+    }
+
+    /**
+     * @param string $address
+     * @return array
+     */
+    public function smart(string $address): array
+    {
+        // 排除干扰词：过滤掉收货地址中的常用说明字符
+        if ($words = $this->config['interference_words'] ?? null) {
+            $replace = array_fill(0, count($words), ' ');
+            $address = str_replace($words, $replace, $address);
+        }
+
+        $result = $this->matchIfRegular($address);
+
+        if (empty($result['province']) || empty($result['city'])) {
+            $result = $this->matchViaRegex($address);
+        }
+
+        if (empty($result['province']) || empty($result['city'])) {
+            $result = $this->matchFuzzy($address);
+        }
+
+        if (empty($result['province']) || empty($result['city'])) {
+            $result = array_fill_keys(['province', 'city', 'district'], null);
+        }
+
+        if ($extra = array_filter($this->config['extra'] ?? [])) {
+            $extra = $this->matchExtra($result['address'] ?? $address, $extra);
+            $result = array_merge($result, $extra);
+        }
+
+        return $result;
+    }
+
+    /**
+     * 规则的地址匹配
+     * @param string $address
+     * @return array|false
+     * @internal 何为规则的地址，即省、市、区由特殊符号分隔开
+     * 1、天猫导出 - 省市区带空格
+     * 2、千牛导出 - 省市区带逗号
+     * 3、京东导出 - 省市区带点"."
+     * 4、其他
+     */
+    protected function matchIfRegular($address)
+    {
+        $result = preg_split('/[\s\.，,]+/u', $address, 4);
+        if ($result === false || count($result) < 3) {
+            return false;
+        }
+
+        // 只检查省、市级长度，区级划分可能不存在
+        $limit = $this->config['province_city_level_region_max_length'] ?? 11;
+        foreach (array_slice($result, 0, 2) as $value) {
+            if (mb_strlen($value) > $limit) {
+                return false;
+            }
+        }
+
+        if (count($result) < 4) {
+            array_splice($result, 2, 0, '');
+        }
+
+        return $this->correct(...$result)/* + ['address' => end($result)]*/;
+    }
+
+    protected function matchViaRegex($address)
+    {
+        if (preg_match('/([\x{4e00}-\x{9fa5}]+省)[^\x{4e00}-\x{9fa5}]*([\x{4e00}-\x{9fa5}\s]+市)(.*$)/Uu', $address, $match) == false) {
+            return false;
+        }
+
+        array_shift($match);
+
+        return array_combine(['province', 'city', 'address'], $match);
+    }
+
+    protected function matchVerbatim($address)
+    {
+        $plr = $this->config['province_level_region'];
+
+        $firstTwoWords = mb_substr($address, 0, 2);
+    }
+
+    /**
+     * 检查并校正省、市、区地址名称
+     *
+     * @param string $province
+     * @param string $city
+     * @param string $district
+     * @param string $address
+     * @return array  省，市，区：['province' => 'xxx', 'city' => 'yyy', 'district' => 'zzz']
+     */
+    protected function correct($province, $city, $district, $address = ''): array
+    {
+        $result = compact('province', 'city', 'district');
+
+        if ($this->config['strict'] ?? false) {
+            return $result;
+        }
+
+        $areas = $this->getAreas();
+
+        if ($province) {
+            $this->recursiveCorrectAsc($areas, $result);
+            return $result;
+        }
+        // else
+        if ($city) {
+            $results = [];
+
+            foreach ($areas as $area) {
+                foreach ($area['children'] ?? [] as $item) {
+
+                    if (mb_strpos($item['name'], $city) !== false) {
+                        $result = compact('district');
+
+                        $this->recursiveCorrectAsc($item['children'] ?? [], $result);
+
+                        $results[] = array_merge([
+                            'province' => $area['name'],
+                            'city' => $item['name']
+                        ], $result);
+                    }
                 }
             }
-            $string = trim(str_replace($compose['name'], '', $string));
+
+            foreach ($results as $result) {
+                if ($district && isset($result['district']) || !$district) {
+                    break;
+                }
+                unset($result);
+            }
         }
 
-        $compose['addr'] = $string;
-
-        return $compose;
+        /**
+         * @FIXME 识别失败：
+         * 甘肃省东乡族自治县布楞沟村1号
+         * 渝北区渝北中学51200街道
+         */
+        return $result ?? array_fill_keys(['province', 'city', 'district'], null);
     }
 
-    /*
-    ** 根据统计规律分析出二三级地址
-    */
-    public static function fuzz($addr)
+    /**
+     * 递归矫正（顺序）
+     * @param array|\ArrayAccess $areas
+     * @param array $result
+     */
+    private function recursiveCorrectAsc($areas, &$result)
+    {
+        $key = key($result);
+        $value = current($result);
+
+        $result[$key] = null;
+
+        if ($value == '') {
+            goto end;
+        }
+
+        foreach ($areas as $area) {
+            if (mb_strpos($area['name'], $value) !== false) {
+                $result[$key] = $area['name'];
+
+                if (next($result) && !empty($area['children'])) {
+                    $this->recursiveCorrectAsc($area['children'], $result);
+                }
+
+                break;
+            }
+        }
+
+        end: if (!isset($result[$key])) {
+            while (next($result)) {
+                $result[key($result)] = null;
+            }
+        }
+    }
+/*
+    private function recursiveCorrectDesc($areas, &$result)
+    {
+    }*/
+
+    /**
+     * 模糊匹配
+     * @param string $address
+     * @return array 省，市，区，街道地址
+     * @author pupuk<pujiexuan@gmail.com>
+     */
+    public function matchFuzzy($addr)
     {
         $addr_origin = $addr;
         $addr = str_replace([' ', ','], ['', ''], $addr);
@@ -108,7 +326,9 @@ class AddressParser
         $a3 = '';
         $street = '';
 
-        if (mb_strpos($addr, '县') !== false && mb_strpos($addr, '县') < floor((mb_strlen($addr) / 3) * 2) || (mb_strpos($addr, '区') !== false && mb_strpos($addr, '区') < floor((mb_strlen($addr) / 3) * 2)) || mb_strpos($addr, '旗') !== false && mb_strpos($addr, '旗') < floor((mb_strlen($addr) / 3) * 2)) {
+        if (mb_strpos($addr, '县') !== false && mb_strpos($addr, '县') < floor((mb_strlen($addr) / 3) * 2) ||
+            mb_strpos($addr, '区') !== false && mb_strpos($addr, '区') < floor((mb_strlen($addr) / 3) * 2) ||
+            mb_strpos($addr, '旗') !== false && mb_strpos($addr, '旗') < floor((mb_strlen($addr) / 3) * 2)) {
 
             if (mb_strstr($addr, '旗')) {
                 $deep3_keyword_pos = mb_strpos($addr, '旗');
@@ -182,89 +402,73 @@ class AddressParser
         }
 
         $r = array(
-            'a1' => $a1,
-            'a2' => $a2,
-            'a3' => $a3,
+            'province' => $a1,
+            'city' => $a2,
+            'district' => $a3,
             'street' => $street,
         );
 
-        return $r;
+        return $this->correct(...array_values($r));
     }
 
-    /*
-    ** 智能解析出省市区+街道地址
-    */
-    protected static function parse($a1, $a2, $a3)
+    /**
+     * 匹配额外字段：手机号(座机)，身份证号，姓名，邮编等信息
+     *
+     * @param string $string
+     * @param array $extra
+     * @return array
+     */
+    protected function matchExtra(string $string, array $extra): array
     {
-        foreach (Area::all() as $area) {
-            $var = 'a'.$area->deep.'_data';
-            ${$var}[$area->getKey()] = [
-                'name' => $area->{$area->getTitleColumn()},
-                'pid' => $area->{$area->getParentColumn()}
-            ];
+        $compose = array_fill_keys(array_keys($extra), null);
+
+        // 提取中国境内身份证号码
+        if (isset($extra['idn']) &&
+            preg_match('/\d{18}|\d{17}X/i', $string, $match)) {
+            $compose['idn'] = strtoupper($match[0]);
+            $string = str_replace($match[0], ' ', $string);
         }
 
-        $r = array();
-
-        if ($a3 != '') {
-
-            $area3_matches = array();
-            foreach ($a3_data as $id => $v) {
-                if (mb_strpos($v['name'], $a3) !== false) {
-                    $area3_matches[$id] = $v;
-                }
-            }
-
-            if ($area3_matches && count($area3_matches) > 1) {
-                if ($a2) {
-                    foreach ($a2_data as $id => $v) {
-                        if (mb_strpos($v['name'], $a2) !== false) {
-                            $area2_matches[$id] = $v;
-                        }
-                    }
-
-                    if ($area2_matches) {
-                        foreach ($area3_matches as $id => $v) {
-
-                            if (isset($area2_matches[$v['pid']])) {
-                                $r['city'] = $area2_matches[$v['pid']]['name'];
-                                $r['region'] = $v['name'];
-                                $sheng_id = $area2_matches[$v['pid']]['pid'];
-                                $r['province'] = $a1_data[$sheng_id]['name'];
-                            }
-                        }
-                    }
-                } else {
-
-                    $r['province'] = '';
-                    $r['city'] = '';
-                    $r['region'] = $a3;
-                }
-            } else if ($area3_matches && count($area3_matches) == 1) {
-                foreach ($area3_matches as $id => $v) {
-                    $city_id = $v['pid'];
-                    $r['region'] = $v['name'];
-                }
-                $city = $a2_data[$city_id];
-                $province = $a1_data[$city['pid']];
-
-                $r['province'] = $province['name'];
-                $r['city'] = $city['name'];
-            } else if (empty($area3_matches) && $a2 == $a3) {
-
-                foreach ($a2_data as $id => $v) {
-                    if (mb_strpos($v['name'], $a2) !== false) {
-                        $area2_matches[$id] = $v;
-                        $sheng_id = $v['pid'];
-                        $r['city'] = $v['name'];
-                    }
-                }
-
-                $r['province'] = $a1_data[$sheng_id]['name'];
-                $r['region'] = '';
+        // 提取联系方式
+        if (isset($extra['mobile'])) {
+            // 去除手机号码中的短横线 如136-3333-6666 主要针对苹果手机
+            $string = preg_replace('/0-|0?(\d{3})-(\d{4})-(\d{4})/', '$1$2$3', $string);
+            // /\d{7,11}|\d{3,4}-\d{6,8}/
+            if (preg_match('/1[0-9]{10}|(\d{3,4}\-)?\d{8}(\-\d{1,})?/U', $string, $match)) {
+                $compose['mobile'] = $match[0];
+                $string = str_replace($match[0], ' ', $string);
             }
         }
 
-        return $r;
+        // 提取邮编
+        if (isset($extra['postcode']) &&
+            preg_match('/\d{6}/U', $string, $match)) {
+            $compose['postcode'] = $match[0];
+            $string = str_replace($match[0], ' ', $string);
+        }
+
+        // 提取村乡镇/街道
+        if (isset($extra['sub_district']) &&
+            preg_match('/^[\x{4e00}-\x{9fa5}]+(?:街道|镇|村|乡)/Uu', $string, $match)) {
+            $compose['sub_district'] = $match[0];
+            $string = str_replace($match[0], ' ', $string);
+        }
+
+        // 提取姓名
+        if (isset($extra['name']) &&
+            !empty($result = preg_split('/\s+/', $string))) {
+            // 按照空格切分后，片面的判断最短的为姓名（不是基于自然语言分析，只是采取统计学上高概率的方案）
+            $compose['name'] = $result[0];
+            foreach ($result as $value) {
+                if (mb_strlen($value) < mb_strlen($compose['name'])) {
+                    $compose['name'] = $value;
+                }
+            }
+            // $string = trim(str_replace($compose['name'], '', $string));
+        }
+
+        $compose['address'] = $string; // str_replace(' ', '', $string);
+
+        return $compose;
     }
 }

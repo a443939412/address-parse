@@ -5,7 +5,17 @@
 [![Build Status][ico-travis]][link-travis]
 [![StyleCI][ico-styleci]][link-styleci]
 
-This is where your description should go. Take a look at [contributing.md](contributing.md) to see a to do list.
+## 中文收货地址智能识别
+参考链接：
+* https://github.com/pupuk/address-smart-parse 感谢作者的分享
+* https://www.cnblogs.com/gqx-html/p/10790464.html
+
+Take a look at [contributing.md](contributing.md) to see a to do list.
+
+Requirements
+------------
+ - PHP >= 7.0.0
+ - Mbstring PHP Extension
 
 ## Installation
 
@@ -17,15 +27,11 @@ $ composer require zifan/addressparser
 
 ## Usage
 
+\Zifan\AddressParser\AddressParser::smart('浙江省杭州市滨江区西兴街道滨康路228号万福中心A座21楼');
+
 ## Change log
 
 Please see the [changelog](changelog.md) for more information on what has changed recently.
-
-## Testing
-
-``` bash
-$ composer test
-```
 
 ## Contributing
 

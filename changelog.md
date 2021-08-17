@@ -12,13 +12,13 @@ All notable changes to `AddressParser` will be documented in this file.
     "autoload-dev": {
         "psr-4": {
             "Tests\\": "tests/",
-            "Zifan\\AddressParser\\": "packages/Zifan/AddressParser/src"
+            "Zifan\\AddressParser\\": "packages/Zifan/addressparser/src"
         }
     },
     "repositories": {
         "zifan/addressparser": {
             "type": "path",
-            "url": "E:\\WWW\\tide\\packages/Zifan/AddressParser",
+            "url": "packages/Zifan/addressparser",
             "options": {
                 "symlink": true
             }
