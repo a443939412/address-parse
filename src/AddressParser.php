@@ -2,7 +2,8 @@
 
 namespace Zifan\AddressParser;
 
-use Symfony\Component\Process\Exception\InvalidArgumentException;
+use Symfony\Component\Process\Exception\RuntimeException;
+use Zifan\LaravelAddressParser\Events\AfterFailedParsing;
 
 /**
  * Class AddressParser
@@ -96,7 +97,7 @@ class AddressParser
         if (!isset($first['name']) ||
             !isset($first['children']) ||
             !isset(current($first['children'])['name'])) {
-            throw new InvalidArgumentException('驱动提供的数据，不符合插件要求的树形结构！');
+            throw new RuntimeException('驱动提供的数据，不符合插件要求的树形结构！');
         }
 
         return static::$areas;
@@ -110,7 +111,7 @@ class AddressParser
         $driver = $this->config['dataProvider'] ?? null;
 
         if (empty($driver['driver'])) {
-            throw new InvalidArgumentException('未设置数据驱动，请前往addressparser.dataProvider.driver设置');
+            throw new RuntimeException('未设置数据驱动，请正确配置 dataProvider.driver');
         }
 
         return (new DataProvider)->resolve($driver);
@@ -138,18 +139,18 @@ class AddressParser
             $address = str_replace($words, $replace, $address);
         }
 
-        $result = $this->matchIfRegular($address);
+        $result = $this->matchIfRegular($address)
+            ?: $this->matchViaRegex($address)
+            ?: $this->matchFuzzy($address);
 
-        if (empty($result['province']) || empty($result['city'])) {
-            $result = $this->matchViaRegex($address);
-        }
 
-        if (empty($result['province']) || empty($result['city'])) {
-            $result = $this->matchFuzzy($address);
-        }
+        if ($result) {
+            // $result = array_combine(['province', 'city', 'district', 'address'], $result);
+            $result = $this->correct(...$result);
 
-        if (empty($result['province']) || empty($result['city'])) {
-            $result = array_fill_keys(['province', 'city', 'district'], null);
+            if (empty($result['province']) || empty($result['city'])) {
+                event(new AfterFailedParsing(func_get_args()[0], $result['address'])); // $result = event(...);
+            }
         }
 
         if ($extra = array_filter($this->config['extra'] ?? [])) {
@@ -157,7 +158,7 @@ class AddressParser
             $result = array_merge($result, $extra);
         }
 
-        return $result;
+        return $result ?: array_fill_keys(['province', 'city', 'district', 'address'], null);
     }
 
     /**
@@ -189,133 +190,38 @@ class AddressParser
             array_splice($result, 2, 0, '');
         }
 
-        return $this->correct(...$result)/* + ['address' => end($result)]*/;
+        return $result;
     }
 
+    /**
+     * @param $address
+     * @return array|false
+     */
     protected function matchViaRegex($address)
     {
-        if (preg_match('/([\x{4e00}-\x{9fa5}]+省)[^\x{4e00}-\x{9fa5}]*([\x{4e00}-\x{9fa5}\s]+市)(.*$)/Uu', $address, $match) == false) {
+        // 排除干扰词
+        str_replace($chi = ['小区', '校区', '园区'], $rep = ['{小QU}', '{校QU}', '{园QU}'], $address);
+
+        if (preg_match('/([\x{4e00}-\x{9fa5}]+省)[^\x{4e00}-\x{9fa5}]*([\x{4e00}-\x{9fa5}]+市)[^\x{4e00}-\x{9fa5}]*([\x{4e00}-\x{9fa5}]{2,5}[市县区])?([^市县区]*$)/Uu', $address, $match) == false) {
             return false;
         }
 
         array_shift($match);
 
-        return array_combine(['province', 'city', 'address'], $match);
+        $address = end($match);
+
+        $match[key($match)] = str_replace($rep, $chi, $address);
+
+        return $match ?? [];
     }
-
-    protected function matchVerbatim($address)
-    {
-        $plr = $this->config['province_level_region'];
-
-        $firstTwoWords = mb_substr($address, 0, 2);
-    }
-
-    /**
-     * 检查并校正省、市、区地址名称
-     *
-     * @param string $province
-     * @param string $city
-     * @param string $district
-     * @param string $address
-     * @return array  省，市，区：['province' => 'xxx', 'city' => 'yyy', 'district' => 'zzz']
-     */
-    protected function correct($province, $city, $district, $address = ''): array
-    {
-        $result = compact('province', 'city', 'district');
-
-        if (empty($this->config['strict'])) {
-            return $result;
-        }
-
-        $areas = $this->getAreas();
-
-        if ($province) {
-            $this->recursiveCorrectAsc($areas, $result);
-            goto end;
-        }
-        // else
-        if ($city) {
-            $results = [];
-
-            foreach ($areas as $area) {
-                foreach ($area['children'] ?? [] as $item) {
-
-                    if (mb_strpos($item['name'], $city) !== false) {
-                        $result = compact('district');
-
-                        $this->recursiveCorrectAsc($item['children'] ?? [], $result);
-
-                        $results[] = array_merge([
-                            'province' => $area['name'],
-                            'city' => $item['name']
-                        ], $result);
-                    }
-                }
-            }
-
-            foreach ($results as $result) {
-                if ($district && isset($result['district']) || !$district) {
-                    break;
-                }
-                unset($result);
-            }
-        }
-
-        end: $result['address'] = $address;
-        /**
-         * @FIXME 识别失败：
-         * 甘肃省东乡族自治县布楞沟村1号
-         * 渝北区渝北中学51200街道
-         */
-        return $result ?? array_fill_keys(['province', 'city', 'district'], null);
-    }
-
-    /**
-     * 递归矫正（顺序）
-     * @param array|\ArrayAccess $areas
-     * @param array $result
-     */
-    private function recursiveCorrectAsc($areas, &$result)
-    {
-        $key = key($result);
-        $value = current($result);
-
-        $result[$key] = null;
-
-        if ($value == '') {
-            goto end;
-        }
-
-        foreach ($areas as $area) {
-            if (mb_strpos($area['name'], $value) !== false) {
-                $result[$key] = $area['name'];
-
-                if (next($result) && !empty($area['children'])) {
-                    $this->recursiveCorrectAsc($area['children'], $result);
-                }
-
-                break;
-            }
-        }
-
-        end: if (!isset($result[$key])) {
-            while (next($result)) {
-                $result[key($result)] = null;
-            }
-        }
-    }
-/*
-    private function recursiveCorrectDesc($areas, &$result)
-    {
-    }*/
-
     /**
      * 模糊匹配
-     * @param string $address
+     * @param string $addr
      * @return array 省，市，区，街道地址
      * @author pupuk<pujiexuan@gmail.com>
+     * @FIXME 优化
      */
-    public function matchFuzzy($addr)
+    protected function matchFuzzy($addr)
     {
         $addr_origin = $addr;
         $addr = str_replace([' ', ','], ['', ''], $addr);
@@ -412,8 +318,103 @@ class AddressParser
             'address' => $address,
         );
 
-        return $this->correct(...array_values($r));
+        return $r;
     }
+
+    /**
+     * 检查并校正省、市、区地址名称
+     *
+     * @param string $province
+     * @param string $city
+     * @param string $district
+     * @param string $address
+     * @return array  省，市，区：['province' => 'xxx', 'city' => 'yyy', 'district' => 'zzz']
+     * @FIXME 优化：甘肃省东乡族自治县布楞沟村1号    渝北区渝北中学51200街道
+     */
+    protected function correct($province, $city, $district, $address = ''): array
+    {
+        $result = compact('province', 'city', 'district');
+
+        if (empty($this->config['strict'])) {
+            return $result;
+        }
+
+        $areas = $this->getAreas();
+
+        if ($province) {
+            $this->recursiveCorrectAsc($areas, $result);
+            goto end;
+        }
+        // else
+        if ($city) {
+            $results = [];
+
+            foreach ($areas as $area) {
+                foreach ($area['children'] ?? [] as $item) {
+
+                    if (mb_strpos($item['name'], $city) !== false) {
+                        $result = compact('district');
+
+                        $this->recursiveCorrectAsc($item['children'] ?? [], $result);
+
+                        $results[] = array_merge([
+                            'province' => $area['name'],
+                            'city' => $item['name']
+                        ], $result);
+                    }
+                }
+            }
+
+            foreach ($results as $result) {
+                if ($district && isset($result['district']) || !$district) {
+                    break;
+                }
+                unset($result);
+            }
+        }
+
+        end: $result['address'] = $address;
+        return $result ?? array_fill_keys(['province', 'city', 'district'], null);
+    }
+
+    /**
+     * 递归矫正（顺序）
+     * @param array|\ArrayAccess $areas
+     * @param array $result
+     */
+    private function recursiveCorrectAsc($areas, &$result)
+    {
+        $key = key($result);
+        $value = current($result);
+
+        $result[$key] = null;
+
+        if ($value == '') {
+            goto end;
+        }
+
+        foreach ($areas as $area) {
+            if (mb_strpos($area['name'], $value) !== false) {
+                $result[$key] = $area['name'];
+
+                if (next($result) && !empty($area['children'])) {
+                    $this->recursiveCorrectAsc($area['children'], $result);
+                }
+
+                break;
+            }
+        }
+
+        end: if (!isset($result[$key])) {
+            while (next($result)) {
+                $result[key($result)] = null;
+            }
+        }
+    }
+
+    /*private function recursiveCorrectDesc($areas, &$result)
+    {
+    }*/
 
     /**
      * 匹配额外字段：手机号(座机)，身份证号，姓名，邮编等信息
@@ -458,14 +459,13 @@ class AddressParser
             $string = str_replace($match[0], ' ', $string);
         }
 
-        // 提取姓名
-        if (isset($extra['name']) &&
+        // @FIXME 优化 提取姓名
+        if (isset($extra['person']) &&
             !empty($result = preg_split('/\s+/', $string))) {
-            // 按照空格切分后，片面的判断最短的为姓名（不是基于自然语言分析，只是采取统计学上高概率的方案）
-            $compose['name'] = $result[0];
+            $compose['person'] = $result[0];
             foreach ($result as $value) {
-                if (mb_strlen($value) < mb_strlen($compose['name'])) {
-                    $compose['name'] = $value;
+                if (mb_strlen($value) < mb_strlen($compose['person'])) {
+                    $compose['person'] = $value;
                 }
             }
             // $string = trim(str_replace($compose['name'], '', $string));
