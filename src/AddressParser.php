@@ -368,6 +368,10 @@ class AddressParser
      * @internal 反向查找：从区级 -> 市级 -> 省级
      *
      * @author pupuk<pujiexuan@gmail.com>
+     * @FIXME 甘肃省东乡族自治县布楞沟村1号  渝北区渝北中学51200街道  成都贝尔通讯实业有限公司
+     * @FIXME goto end
+     * @TODO  seed
+     * @TODO correctVerbatim
      */
     protected function extractReverseFuzzy($address)
     {
@@ -403,7 +407,7 @@ class AddressParser
                         $a3 = mb_substr($address, $xianPos - 6, 7);
 
                         $firstWord = mb_substr($a3, 0, 1);
-                        if (in_array($firstWord, ['省', '市', '州'])) {
+                        if (in_array($firstWord, ['自治区', '省', '市', '州'])) {
                             $a3 = mb_substr($a3, 1);
                             /*
                             if ($firstWord !== '市') {
@@ -455,11 +459,6 @@ class AddressParser
      * @param string $district
      * @param string $address
      * @return array|false 省，市，区：['province' => 'xxx', 'city' => 'yyy', 'district' => 'zzz', 'address' => 'aaa']
-     *
-     * @FIXME 甘肃省东乡族自治县布楞沟村1号  渝北区渝北中学51200街道  成都贝尔通讯实业有限公司
-     * @FIXME goto end
-     * @TODO  seed
-     * @TODO correctVerbatim
      */
     protected function correctReverse(string $province, string $city, string $district, string $address = '')
     {
