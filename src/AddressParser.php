@@ -138,6 +138,31 @@ class AddressParser
             $address = str_replace($words, $replace, $address);
         }
 
+        $result = $this->performParse($address);
+
+        // Dispatch event
+        if (empty($result['province']) || empty($result['city'])) {
+            event(new AfterFailedParsing(func_get_args()[0], $result['address'])); // $result = event(...);
+        }
+
+        // Parse extra fields
+        if ($extra = array_filter($this->config['extra'] ?? [])) {
+            $extra = $this->matchExtra($result['address'] ?? $address, $extra);
+            $result = $result ? array_merge($result, $extra) : $extra;
+        }
+
+        $result['address'] = preg_replace('/\s+/', ' ', $result['address']);
+
+        return $result;
+    }
+
+    /**
+     * @param string $address
+     * @return array
+     * @internal Verbatim: 逐字逐句
+     */
+    protected function performParse(string $address): array
+    {
         $result = $this->extractIfRegular($address)
             ?: $this->extractViaRegex($address);
 
@@ -152,27 +177,7 @@ class AddressParser
         }
 
         // array_combine(['province', 'city', 'district', 'address'], $result)
-        if (!$result) {
-            $result = array_fill_keys(['province', 'city', 'district'], null)
-                + ['address' => $address];
-        }
-
-        // 识别失败
-        if (empty($result['province']) || empty($result['city'])) {
-            event(new AfterFailedParsing(func_get_args()[0], $result['address'])); // $result = event(...);
-        }
-
-        if ($extra = array_filter($this->config['extra'] ?? [])) {
-            $extra = $this->matchExtra($result['address'] ?? $address, $extra);
-            $result = $result ? array_merge($result, $extra) : $extra;
-        }
-
-        $result = array_merge($result, [
-            'address' =>  preg_replace('/\s+/', ' ', $result['address']),
-            'text' => $address,
-        ]);
-
-        return $result;
+        return $result ?: array_fill_keys(['province', 'city', 'district'], null) + ['address' => $address];
     }
 
     /**
@@ -228,7 +233,7 @@ class AddressParser
      * SELECT max(CHAR_LENGTH(`name`)) FROM `areas` WHERE `name` LIKE '%省' and level = 1;
      * SELECT * FROM `areas` WHERE `name` LIKE '%省' and level = 1 and CHAR_LENGTH(`name`) > 3;
      */
-    protected function extractViaRegex(string $address): ? array
+    protected function extractViaRegex(string $address): ?array
     {
         // ([\x{4e00}-\x{9fa5}]+省)[^\x{4e00}-\x{9fa5}]*([\x{4e00}-\x{9fa5}]+市)[^\x{4e00}-\x{9fa5}]*([\x{4e00}-\x{9fa5}]{2,5}[市县区旗])?([^市县区旗]*$)
         if (preg_match("#([\x{4e00}-\x{9fa5}]{2,3}省)[^\x{4e00}-\x{9fa5}]*([\x{4e00}-\x{9fa5}]{2,4}市)(.*)$#Uu", $address, $match) == false) {
@@ -318,9 +323,7 @@ class AddressParser
             }
         }
 
-        if (!isset($districtArea)) {
-            return false;
-        }
+        return false;
     }
 
     /**
@@ -368,17 +371,12 @@ class AddressParser
      * @internal 反向查找：从区级 -> 市级 -> 省级
      *
      * @author pupuk<pujiexuan@gmail.com>
-     * @FIXME 甘肃省东乡族自治县布楞沟村1号  渝北区渝北中学51200街道  成都贝尔通讯实业有限公司
-     * @FIXME goto end
-     * @TODO  seed
-     * @TODO correctVerbatim
      */
     protected function extractReverseFuzzy($address)
     {
         $a1 = ''; // province
         $a2 = ''; // city
         $a3 = ''; // district
-        $origin = $address;
 
         $address = str_replace([' ', ',', '自治区', '自治州', '小区', '校区', '园区'], ['', '', '省', '州', '' , ''], $address);
 
@@ -386,7 +384,7 @@ class AddressParser
         $xianPos = mb_strpos($address, '县');
         $quPos   = mb_strpos($address, '区');
         $qiPos   = mb_strpos($address, '旗');
-        $shiPos  = mb_strpos($address, '市');
+
 
         if ($xianPos !== false && $xianPos < $refPos ||
             $quPos   !== false && $quPos   < $refPos ||
@@ -396,10 +394,11 @@ class AddressParser
                 $a3 = mb_substr($address, $qiPos - 1, 2);
             }
             if ($quPos) {
+                $shiPos  = mb_strpos(mb_substr($address, 0, $quPos - 1), '市');
                 $a3 = $shiPos ? mb_substr($address, $shiPos + 1, $quPos - $shiPos) : mb_substr($address, $quPos - 2, 3);
             }
             if ($xianPos) {
-                if ($shiPos) {
+                if ($shiPos  = mb_strpos(mb_substr($address, 0, $xianPos - 1), '市')) {
                     $a3 = mb_substr($address, $shiPos + 1, $xianPos - $shiPos);
                 } else {
                     //考虑形如【甘肃省东乡族自治县布楞沟村1号】的情况
@@ -407,7 +406,7 @@ class AddressParser
                         $a3 = mb_substr($address, $xianPos - 6, 7);
 
                         $firstWord = mb_substr($a3, 0, 1);
-                        if (in_array($firstWord, ['自治区', '省', '市', '州'])) {
+                        if (in_array($firstWord, ['省', '市', '州'])) {
                             $a3 = mb_substr($a3, 1);
                             /*
                             if ($firstWord !== '市') {
@@ -415,40 +414,36 @@ class AddressParser
                             }*/
                         }
                     } else {
-                        $a3 = mb_substr($address, $xianPos - 2, 3);
+                        $a3 = mb_substr($address, $xianPos - 2, 3); // 有两个字的县名：赵县，怎么办？
                     }
                 }
             }
 
-            //$address = mb_substr($origin, $deep3_keyword_pos + 1);
-
+            //$street = mb_substr($origin, $deep3_keyword_pos + 1);
         }
         elseif (mb_substr_count($address, '市') >= 2) {
             $shiRPos = mb_strripos($address, '市');
             $a3 = mb_substr($address, $shiRPos - 2, 3);
-            $address = mb_substr($origin, $shiRPos + 1);
+            $a2 = mb_substr(mb_substr($address, 0, $shiRPos - 2), $shiRPos - 2, 3);
+            //$street = mb_substr($origin, $shiRPos + 1);
         }
 
-        if (mb_strrpos($address, '市') ||
-            mb_strstr($address, '盟') ||
-            mb_strstr($address, '州')
-        ) {
-            if ($pos = mb_strrpos($address, '市')) {
-                $a2 = mb_substr($address, $pos - 2, 3);
-            }
-            elseif ($pos = mb_strrpos($address, '盟')) {
-                $a2 = mb_substr($address, $pos - 2, 3);
-            }
-            elseif ($pos = mb_strrpos($address, '州')) {
-                $a2 = ($ziZhiPos = mb_strrpos($address, '自治州')) !== false
-                    ? mb_substr($address, $ziZhiPos - 4, 5)
-                    : mb_substr($address, $pos - 2, 3);
-            }
+        if ($shiRPos = mb_strrpos($address, '市')) {
+            $a2 = mb_substr($address, $shiRPos - 2, 3);
+        }
+        elseif ($menRPos = mb_strrpos($address, '盟')) {
+            $a2 = mb_substr($address, $menRPos - 2, 3);
+        }
+        elseif ($zouRPos = mb_strrpos($address, '州')) {
+            $a2 = ($ziZhiZouPos = mb_strrpos($address, '自治州')) !== false
+                ? mb_substr($address, $ziZhiZouPos - 4, 5)
+                : mb_substr($address, $zouRPos - 2, 3);
         }
 
-        $result = compact('a1', 'a2', 'a3', 'address');
+        $result = compact('a1', 'a2', 'a3');
 
-        return count(array_filter($result)) <= 2 ? false : $result;
+        return count(array_filter($result)) < 1
+            ? false : $result + ['address' => func_get_args()[0]]; // 自治区、自治州被替换后要还原，所以 address 取原始值
     }
 
     /**
@@ -484,22 +479,53 @@ class AddressParser
                 }
             }
         }
+        elseif ($city) {
+            foreach ($areas as $provinceArea) {
+                $cityArea = $this->lookup($provinceArea['children'] ?? [], $city);
+
+                if ($cityArea) {
+                    $districtArea = $this->matchDistrict($cityArea['children'] ?? [], $district, $address);
+
+                    $results[] = [
+                        'province'      => $provinceArea['name'],
+                        'province_id'   => $provinceArea['id'],
+                        'city'          => $cityArea['name'],
+                        'city_id'       => $cityArea['id'],
+                        'district'      => $districtArea['name'] ?? null,
+                        'district_id'   => $districtArea['id'] ?? null,
+                        'address'       => $address,
+                    ];
+                }
+            }
+        }
+
+        if (empty($results)) {
+            return false;
+        }
 
         if ($city) {
             foreach ($results as $result) {
-                if (mb_strpos($result['city'], $city)) {
-                    return $result;
+                if (mb_strpos($result['city'], $city) !== false) {
+                    goto end;
                 }
             }
         }
 
         foreach ($results as $result) {
-            if (mb_strpos($address, $result['province'])) {
-                return $result;
+            if (mb_strpos($address, $result['province']) !== false) {
+                goto end;
             }
         }
 
-        return $results ? current($results) : false;
+        $result = current($results);
+
+        end: {
+            /** @see \Illuminate\Support\Arr::only() 模仿实现 */
+            $search = array_filter(array_intersect_key($result, array_flip(['district', 'city', 'province'])));
+            $result['address'] = str_replace($search, ' ', $address);
+        }
+
+        return $result;
     }
 
     /**
