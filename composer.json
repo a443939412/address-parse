@@ -15,7 +15,7 @@
         }
     ],
     "type": "library",
-    "homepage": "https://github.com/zifan/addressparser",
+    "homepage": "https://github.com/a443939412/address-parse",
     "keywords": ["AddressParser", "address parse"],
     "require": {
         "php": ">=7.0",
