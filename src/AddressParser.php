@@ -574,7 +574,7 @@ class AddressParser
             // 去除手机号码中的短横线 如136-3333-6666 主要针对苹果手机
             $string = preg_replace('/0-|0?(\d{3})-(\d{4})-(\d{4})/', '$1$2$3', $string);
             // /\d{7,11}|\d{3,4}-\d{6,8}/
-            if (preg_match('/1[0-9]{10}|(\d{3,4}\-)?\d{8}(\-\d{1,})?/U', $string, $match)) {
+            if (preg_match('/1[0-9]{10}|(?:\d{3,4}\-)?\d{8}(?:\-\d{1,})?/U', $string, $match)) {
                 $compose['mobile'] = $match[0];
                 $string = str_replace($match[0], ' ', $string);
             }
