@@ -127,7 +127,8 @@ class AddressParser
     }
 
     /**
-     * @param string $address
+     * 解析地址
+     * @param string $address 地址。传入该参数前最好先应用 trim 函数
      * @return array
      */
     public function smart(string $address): array
@@ -195,7 +196,7 @@ class AddressParser
      */
     protected function extractIfRegular($address): ?array
     {
-        $result = preg_split('/[\s\.，,]+/u', $address, 4);
+        $result = preg_split('/[\s\.，,]+/u', trim($address, ' '), 4);
 
         if ($result === false ||
             count($result) < 3 ||
