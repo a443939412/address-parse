@@ -348,7 +348,7 @@ class AddressParser
 
         $result = compact('province', 'city', 'district');
 
-        return array_filter($result) ? $result + ['address' => func_get_args()[0]] : false; // 自治区、自治州被替换后要还原，所以 address 取原始值
+        return array_filter($result) ? $result + ['address' => func_get_arg(0)] : false; // 自治区、自治州被替换后要还原，所以 address 取原始值
     }
 
     /**
