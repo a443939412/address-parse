@@ -143,6 +143,8 @@ class AddressParser
      */
     public function smart(string $address): array
     {
+        $origin = $address;
+
         // 排除干扰词：过滤掉收货地址中的常用说明字符
         if ($words = $this->config['interference_words'] ?? null) {
             $replace = array_fill(0, count($words), ' ');
@@ -153,7 +155,7 @@ class AddressParser
 
         // Dispatch event
         if (empty($result['province']) || empty($result['city'])) {
-            event(new AfterFailedParsing(func_get_arg(0), $result)); // $result = event(...);
+            event(new AfterFailedParsing(/*func_get_arg(0)*/$origin, $result)); // $result = event(...);
         }
 
         // Parse extra fields
