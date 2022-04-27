@@ -35,6 +35,14 @@ class AddressParser
     ];
 
     /**
+     * 指定“县”干扰字
+     *
+     * @var string[]
+     * @internal 如：'县城', '县政府'
+     */
+    protected $xian_interference_words = ['城', '政'];
+
+    /**
      * 指定“区”干扰字
      *
      * @var string[]
@@ -283,14 +291,14 @@ class AddressParser
     {
         $province = $city = $district = '';
         $address = str_replace([' ', ','], '', $address); // '自治区', '自治州' --> '省', '州'
-        $xianPos = mb_strpos($address, '县');
+        $xianPos = $this->getXianPosition($address); // mb_strpos($address, '县');
         $quPos = $this->getQuPosition($address); // mb_strpos($address, '区')
         $qiPos = mb_strpos($address, '旗');
         $refPos = floor((mb_strlen($address) / 3) * 2);
 
         if ($qiPos && $qiPos < $refPos && !$quPos && !$xianPos) {
             $district = mb_substr($address, $qiPos - 1, 2);
-        } elseif ($quPos && $quPos < $refPos && !$xianPos) {
+        } elseif ($quPos && $quPos < $refPos && (!$xianPos || $xianPos == $quPos + 1)) {
             if ($shiPos = mb_strrpos(mb_substr($address, 0, $quPos - 1), '市')) {
                 $district = mb_substr($address, $shiPos + 1, $quPos - $shiPos);
                 $city = mb_substr($address, $shiPos - 2, 3);
@@ -348,7 +356,19 @@ class AddressParser
 
         $result = compact('province', 'city', 'district');
 
-        return array_filter($result) ? $result + ['address' => func_get_arg(0)] : false; // 自治区、自治州被替换后要还原，所以 address 取原始值
+        return array_filter($result) ? $result + ['address' => $address] : false; // 自治区、自治州被替换后要还原，所以 address 取原始值
+    }
+
+    protected function getXianPosition(string $address)
+    {
+        for ($i = 1; $i < mb_strlen($address); $i++) {
+            if (!strcmp(mb_substr($address, $i, 1), '县') &&
+                !in_array(mb_substr($address, $i + 1, 1), $this->xian_interference_words, true)) {
+                return $i;
+            }
+        }
+
+        return false;
     }
 
     /**
