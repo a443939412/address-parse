@@ -517,7 +517,7 @@ class AddressParser
 
                 if ($cityArea) {
                     $districtArea = $this->matchDistrict($cityArea['children'] ?? [], $district, $address);
-                    $thisResult = $this->weightCalculation($district, [
+                    $thisResult = $this->weightCalculation($city, [
                         'province'    => $provinceArea['name'],
                         'province_id' => $provinceArea['id'],
                         'city'        => $cityArea['name'],
@@ -662,20 +662,20 @@ class AddressParser
 
     /**
      * 地址查询 权重计算
-     * @param $district
+     * @param $search
      * @param $possible
      * @param $level
      * @return mixed
      */
-    private function weightCalculation($district, $possible, $level)
+    private function weightCalculation($search, $possible, $level)
     {
         $possibleLevels = [ $possible['province'] ];
         if ($level > 0) $possibleLevels[] = $possible['city'];
         if ($level > 1) $possibleLevels[] = $possible['district'];
         // 可能的省市县
         $realAddress = mb_substr(
-            $possible['address'], 0, !$district ? mb_strlen($possible['address']) :
-            mb_strpos($possible['address'], $district) + mb_strlen($district)
+            $possible['address'], 0, !$search ? mb_strlen($possible['address']) :
+            mb_strpos($possible['address'], $search) + mb_strlen($search)
         );
         $possibleAddress = implode('', $possibleLevels);
 
@@ -685,7 +685,7 @@ class AddressParser
         );
         $single = floatval(
             round(($radioCount = count($intersectArr)) / ($realCount = count($realArr)), 2)
-            * $radioCount
+            * $radioCount * 2
         );
         // 双字符重叠权重计算
         $realDoubleArr = $possibleDoubleArr = [];
@@ -696,7 +696,7 @@ class AddressParser
         $intersectDoubleArr = array_intersect($realDoubleArr, $possibleDoubleArr);
         $double = floatval(
             round($radioCount = count($intersectDoubleArr) / count($realDoubleArr), 2)
-            * $radioCount * 2
+            * $radioCount * 3
         );
         $possible['weight'] = round($single + $double, 2);
 
@@ -730,7 +730,7 @@ class AddressParser
                 E_USER_WARNING);
             return false;
         }
-        $encoding = is_null($encoding) ? mb_internal_encoding() :(string)$encoding;
+        $encoding = is_null($encoding) ? mb_internal_encoding() : (string)$encoding;
         if (!in_array($encoding, mb_list_encodings(), true)) {
             static $aliases;
             if ($aliases === null) {
