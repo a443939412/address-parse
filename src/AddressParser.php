@@ -43,7 +43,7 @@ class AddressParser
      * $quString = preg_replace('#([小校园社发])区#Uu', '{$1QU}', $quString);
      * $quString = str_replace($chi = ['小区', '校区', '园区', '社区', '开发区'], $rep = ['{小QU}', '{校QU}', '{园QU}', '{社QU}', '{开发QU}'], $quString);
      */
-    protected $qu_interference_words = ['小', '校', '园', '社', '治'];
+    protected $qu_interference_words = [ '小', '校', '园', '社', '治' ];
 
     /**
      * AddressParser constructor.
@@ -155,7 +155,7 @@ class AddressParser
 
         // Dispatch event
         if (empty($result['province']) || empty($result['city'])) {
-            event(new AfterFailedParsing(/*func_get_arg(0)*/$origin, $result)); // $result = event(...);
+            event(new AfterFailedParsing(/*func_get_arg(0)*/ $origin, $result)); // $result = event(...);
         }
 
         // Parse extra fields
@@ -190,7 +190,7 @@ class AddressParser
             $result = $this->correctReverse(...array_values($result));
         }
 
-        return $result ?: array_fill_keys(['province', 'city', 'district'], null) + ['address' => $address];
+        return $result ?: array_fill_keys([ 'province', 'city', 'district' ], null) + [ 'address' => $address ];
     }
 
     /**
@@ -228,7 +228,7 @@ class AddressParser
             array_splice($result, 2, 0, '');
         }
 
-        return array_combine(['province', 'city', 'district', 'address'], $result);
+        return array_combine([ 'province', 'city', 'district', 'address' ], $result);
     }
 
     /**
@@ -268,7 +268,7 @@ class AddressParser
         }
 
         // if ($left) { $address = end($match); $match[key($match)] = $left . $address; }
-        return array_combine(['province', 'city', 'district', 'address'], $match);
+        return array_combine([ 'province', 'city', 'district', 'address' ], $match);
     }
 
     /**
@@ -281,28 +281,26 @@ class AddressParser
      */
     protected function extractReverseFuzzy($address)
     {
-        $province= $city = $district = '';
-        $address = str_replace([' ', ','], '', $address); // '自治区', '自治州' --> '省', '州'
+        $province = $city = $district = '';
+        $address = str_replace([ ' ', ',' ], '', $address); // '自治区', '自治州' --> '省', '州'
         $xianPos = mb_strpos($address, '县');
-        $quPos   = $this->getQuPosition($address); // mb_strpos($address, '区')
-        $qiPos   = mb_strpos($address, '旗');
-        $refPos  = floor((mb_strlen($address) / 3) * 2);
+        $quPos = $this->getQuPosition($address); // mb_strpos($address, '区')
+        $qiPos = mb_strpos($address, '旗');
+        $refPos = floor((mb_strlen($address) / 3) * 2);
 
         if ($qiPos && $qiPos < $refPos && !$quPos && !$xianPos) {
             $district = mb_substr($address, $qiPos - 1, 2);
-        }
-        elseif ($quPos && $quPos < $refPos && !$xianPos) {
+        } elseif ($quPos && $quPos < $refPos && !$xianPos) {
             if ($shiPos = mb_strrpos(mb_substr($address, 0, $quPos - 1), '市')) {
                 $district = mb_substr($address, $shiPos + 1, $quPos - $shiPos);
-                $city =  mb_substr($address, $shiPos - 2, 3);
+                $city = mb_substr($address, $shiPos - 2, 3);
             } else {
                 $district = $quPos === 1 ? mb_substr($address, 0, 2) : mb_substr($address, $quPos - 2, 3);
             }
-        }
-        elseif ($xianPos && $xianPos < $refPos) {
+        } elseif ($xianPos && $xianPos < $refPos) {
             if ($shiPos = mb_strrpos(mb_substr($address, 0, $xianPos - 1), '市')) {
                 $district = mb_substr($address, $shiPos + 1, $xianPos - $shiPos);
-                $city =  mb_substr($address, $shiPos - 2, 3);
+                $city = mb_substr($address, $shiPos - 2, 3);
             } else {
                 //考虑形如【甘肃省东乡族自治县布楞沟村1号】的情况
                 if (mb_strpos($address, '自治县')) {
@@ -328,14 +326,11 @@ class AddressParser
                 $district = mb_substr($address, mb_strrpos($address, '市') - 2, 3);
                 $city = mb_substr($address, mb_strpos($address, '市') - 2, 3);
                 // $street = mb_substr($origin, mb_strrpos($address, '市') + 1);
-            }
-            elseif ($shiRPos = mb_strrpos($address, '市')) {
+            } elseif ($shiRPos = mb_strrpos($address, '市')) {
                 $city = mb_substr($address, $shiRPos - 2, 3);
-            }
-            elseif ($menRPos = mb_strrpos($address, '盟')) {
+            } elseif ($menRPos = mb_strrpos($address, '盟')) {
                 $city = mb_substr($address, $menRPos - 2, 3);
-            }
-            elseif ($zhouRPos = mb_strrpos($address, '州')) {
+            } elseif ($zhouRPos = mb_strrpos($address, '州')) {
                 $city = ($ziZhiZhouPos = mb_strrpos($address, '自治州')) !== false
                     ? mb_substr($address, $ziZhiZhouPos - 4, 7)
                     : ($zhouRPos === 1 ? mb_substr($address, 0, 2) : mb_substr($address, $zhouRPos - 2, 3));
@@ -350,7 +345,7 @@ class AddressParser
 
         $result = compact('province', 'city', 'district');
 
-        return array_filter($result) ? $result + ['address' => func_get_arg(0)] : false; // 自治区、自治州被替换后要还原，所以 address 取原始值
+        return array_filter($result) ? $result + [ 'address' => func_get_arg(0) ] : false; // 自治区、自治州被替换后要还原，所以 address 取原始值
     }
 
     /**
@@ -402,13 +397,13 @@ class AddressParser
         }
 
         return [
-            'province'      => $province['name'],
-            'province_id'   => $province['id'],
-            'city'          => $city['name'],
-            'city_id'       => $city['id'],
-            'district'      => $districtArea['name'] ?? null,
-            'district_id'   => $districtArea['id'] ?? null,
-            'address'       => $address,
+            'province'    => $province['name'],
+            'province_id' => $province['id'],
+            'city'        => $city['name'],
+            'city_id'     => $city['id'],
+            'district'    => $districtArea['name'] ?? null,
+            'district_id' => $districtArea['id'] ?? null,
+            'address'     => $address,
         ];
     }
 
@@ -464,15 +459,14 @@ class AddressParser
      * @param string $address
      * @return array|false;
      */
-    protected function matchDistrict(array $districts, string $target = '', &$address)
+    protected function matchDistrict(array $districts, string $target = '', string &$address)
     {
         $districtArea = $this->lookup($districts ?? [], $target ?: mb_substr($address, 0, 2));
 
         if (isset($districtArea) && $target == '') {
-            $address = str_replace([$districtArea['name']/*, mb_substr($address, 0, 2)*/], '', $address);
-        }
-        elseif (!isset($districtArea) && $target) {
-            $address = $target .' '. $address;
+            $address = str_replace([ $districtArea['name']/*, mb_substr($address, 0, 2)*/ ], '', $address);
+        } elseif (!isset($districtArea) && $target) {
+            $address = $target . ' ' . $address;
         }
 
         return $districtArea ?: false;
@@ -491,54 +485,66 @@ class AddressParser
     protected function correctReverse(string $province, string $city, string $district, string $address = '')
     {
         $areas = $this->getAreas();
-        // $results = [];
         if ($district) {
             foreach ($areas as $provinceArea) {
                 foreach ($provinceArea['children'] ?? [] as $cityArea) {
                     $districtArea = $this->lookup($cityArea['children'] ?? [], $district);
 
                     if ($districtArea) {
-                        $results[] = [
-                            'province'      => $provinceArea['name'],
-                            'province_id'   => $provinceArea['id'],
-                            'city'          => $cityArea['name'],
-                            'city_id'       => $cityArea['id'],
-                            'district'      => $districtArea['name'],
-                            'district_id'   => $districtArea['id'],
-                            'address'       => $address,
-                        ];
+                        $thisResult = $this->weightCalculation($district, [
+                            'province'    => $provinceArea['name'],
+                            'province_id' => $provinceArea['id'],
+                            'city'        => $cityArea['name'],
+                            'city_id'     => $cityArea['id'],
+                            'district'    => $districtArea['name'],
+                            'district_id' => $districtArea['id'],
+                            'address'     => $address,
+                        ], 2);
+                        $results[] = $thisResult;
                     }
                 }
             }
+            if (!empty($results)) {
+                // 排序只保留权重最高的10个
+                array_multisort(array_column($results, 'weight'), SORT_DESC, $results);
+                $results = array_splice($results, 0, 10);
+            }
         }
 
-        if (empty($results) && $city) {
+        if ($city) {
             foreach ($areas as $provinceArea) {
                 $cityArea = $this->lookup($provinceArea['children'] ?? [], $city);
 
                 if ($cityArea) {
                     $districtArea = $this->matchDistrict($cityArea['children'] ?? [], $district, $address);
-
-                    $results[] = [
-                        'province'      => $provinceArea['name'],
-                        'province_id'   => $provinceArea['id'],
-                        'city'          => $cityArea['name'],
-                        'city_id'       => $cityArea['id'],
-                        'district'      => $districtArea['name'] ?? null,
-                        'district_id'   => $districtArea['id'] ?? null,
-                        'address'       => $address,
-                    ];
+                    $thisResult = $this->weightCalculation($district, [
+                        'province'    => $provinceArea['name'],
+                        'province_id' => $provinceArea['id'],
+                        'city'        => $cityArea['name'],
+                        'city_id'     => $cityArea['id'],
+                        'district'    => $districtArea['name'] ?? null,
+                        'district_id' => $districtArea['id'] ?? null,
+                        'address'     => $address,
+                    ], 1);
+                    $cityResults[] = $thisResult;
                 }
             }
             // 提取到的“市”可能是一个县级市
-            if (empty($results) && strcmp(mb_substr($city, -1), '市') === 0) {
+            if (empty($cityResults) && strcmp(mb_substr($city, -1), '市') === 0) {
                 return $this->correctReverse($province, '', $city, $address);
+            }
+            if (!empty($cityResults)) {
+                // 排序只保留权重最高的10个
+                array_multisort(array_column($cityResults, 'weight'), SORT_DESC, $cityResults);
+                $results = array_merge($results ?? [], array_splice($cityResults, 0, 10));
             }
         }
 
         if (empty($results)) {
             return false;
         }
+        // 权重排序
+        array_multisort(array_column($results, 'weight'), SORT_DESC, $results);
 
         if ($city) {
             foreach ($results as $result) {
@@ -558,9 +564,13 @@ class AddressParser
 
         end: {
         /** @see \Illuminate\Support\Arr::only() 模仿实现 */
-        $search = array_filter(array_intersect_key($result, array_flip(['province', 'city', 'district'])));
-        ksort($search);
-        $result['address'] = str_replace($search, ' ', $address);
+        $search = array_filter(array_intersect_key($result, array_flip([ 'province', 'city', 'district' ])));
+        array_walk($search, function ($val, $key) use (&$searchArr) {
+            $searchArr[$key] = $val;
+            $searchArr[$key . '_copy'] = str_replace([ '省', '自治区', '洲', '市', '区' ], ' ', $val);
+        });
+        ksort($searchArr);
+        $result['address'] = trim(str_replace($searchArr, ' ', $address));
     }
 
         return $result;
@@ -629,7 +639,7 @@ class AddressParser
 
         // 提取姓名（最长名字貌似由15个字，不过只考虑一般情况提高准确性，取10个，TODO可以提取到配置文件）
         if (isset($extra['person']) &&
-            preg_match('/(?:[一二三四五六七八九\d+](?:室|单元|号楼|期|弄|号|幢|栋)\d*)+ *([^一二三四五六七八九 室期弄号幢栋|单元|号楼|商铺|档口|A-Za-z0-9_#！!@（\(]{2,10}) *(?:\d{11})?$/Uu', $string , $match)) {
+            preg_match('/(?:[一二三四五六七八九\d+](?:室|单元|号楼|期|弄|号|幢|栋)\d*)+ *([^一二三四五六七八九 室期弄号幢栋|单元|号楼|商铺|档口|A-Za-z0-9_#！!@（\(]{2,10}) *(?:\d{11})?$/Uu', $string, $match)) {
             $compose['person'] = $match[1];
             $string = str_replace($compose['person'], ' ', $string);
         }
@@ -648,5 +658,103 @@ class AddressParser
         $compose['address'] = $string;
 
         return $compose;
+    }
+
+    /**
+     * 地址查询 权重计算
+     * @param $district
+     * @param $possible
+     * @param $level
+     * @return mixed
+     */
+    private function weightCalculation($district, $possible, $level)
+    {
+        $possibleLevels = [ $possible['province'] ];
+        if ($level > 0) $possibleLevels[] = $possible['city'];
+        if ($level > 1) $possibleLevels[] = $possible['district'];
+        // 可能的省市县
+        $realAddress = mb_substr(
+            $possible['address'], 0, !$district ? mb_strlen($possible['address']) :
+            mb_strpos($possible['address'], $district) + mb_strlen($district)
+        );
+        $possibleAddress = implode('', $possibleLevels);
+
+        // 单字符重叠权重计算
+        $intersectArr = array_intersect(
+            $realArr = $this->mbStrSplit($realAddress), $possibleArr = $this->mbStrSplit($possibleAddress)
+        );
+        $single = floatval(
+            round(($radioCount = count($intersectArr)) / ($realCount = count($realArr)), 2)
+            * $radioCount
+        );
+        // 双字符重叠权重计算
+        $realDoubleArr = $possibleDoubleArr = [];
+        for ($i = 0; $i <= $realCount - 2; $i++)
+            $realDoubleArr[] = $realArr[$i] . $realArr[$i + 1];
+        for ($i = 0; $i <= count($possibleArr) - 2; $i++)
+            $possibleDoubleArr[] = $possibleArr[$i] . $possibleArr[$i + 1];
+        $intersectDoubleArr = array_intersect($realDoubleArr, $possibleDoubleArr);
+        $double = floatval(
+            round($radioCount = count($intersectDoubleArr) / count($realDoubleArr), 2)
+            * $radioCount * 2
+        );
+        $possible['weight'] = round($single + $double, 2);
+
+        return $possible;
+    }
+
+    /**
+     * (PHP 7 >= 7.4.0, PHP 8)
+     * mb_str_split — Given a multibyte string, return an array of its characters
+     * @param $string
+     * @param int $split_length
+     * @param null $encoding
+     * @return array|false|null
+     */
+    private function mbStrSplit($string, int $split_length = 1, $encoding = null)
+    {
+        if (null !== $string && !\is_scalar($string) &&
+            !(\is_object($string) && \method_exists($string, '__toString'))) {
+            trigger_error('mb_str_split(): expects parameter 1 to be string, ' .
+                \gettype($string) . ' given', E_USER_WARNING);
+            return null;
+        }
+        if ($split_length !== null && !\is_bool($split_length) && !\is_numeric($split_length)) {
+            trigger_error('mb_str_split(): expects parameter 2 to be int, ' .
+                \gettype($split_length) . ' given', E_USER_WARNING);
+            return null;
+        }
+        $split_length = (int)$split_length;
+        if (1 > $split_length) {
+            trigger_error('mb_str_split(): The length of each segment must be greater than zero',
+                E_USER_WARNING);
+            return false;
+        }
+        $encoding = is_null($encoding) ? mb_internal_encoding() :(string)$encoding;
+        if (!in_array($encoding, mb_list_encodings(), true)) {
+            static $aliases;
+            if ($aliases === null) {
+                $aliases = [];
+                foreach (mb_list_encodings() as $encoding) {
+                    $encoding_aliases = mb_encoding_aliases($encoding);
+                    if ($encoding_aliases) {
+                        foreach ($encoding_aliases as $alias) {
+                            $aliases[] = $alias;
+                        }
+                    }
+                }
+            }
+            if (!in_array($encoding, $aliases, true)) {
+                trigger_error('mb_str_split(): Unknown encoding "' . $encoding . '"', E_USER_WARNING);
+                return null;
+            }
+        }
+        $result = [];
+        $length = mb_strlen($string, $encoding);
+        for ($i = 0; $i < $length; $i += $split_length) {
+            $result[] = mb_substr($string, $i, $split_length, $encoding);
+        }
+
+        return $result;
     }
 }
