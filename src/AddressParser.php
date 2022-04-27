@@ -18,7 +18,7 @@ class AddressParser
      *
      * @var string
      */
-    const VERSION = '2.0.0';
+    const VERSION = '2.1.2';
 
     /**
      * @var array|\ArrayAccess
@@ -43,7 +43,7 @@ class AddressParser
      * $quString = preg_replace('#([小校园社发])区#Uu', '{$1QU}', $quString);
      * $quString = str_replace($chi = ['小区', '校区', '园区', '社区', '开发区'], $rep = ['{小QU}', '{校QU}', '{园QU}', '{社QU}', '{开发QU}'], $quString);
      */
-    protected $qu_interference_words = [ '小', '校', '园', '社', '治' ];
+    protected $qu_interference_words = ['小', '校', '园', '社', '治'];
 
     /**
      * AddressParser constructor.
@@ -190,7 +190,7 @@ class AddressParser
             $result = $this->correctReverse(...array_values($result));
         }
 
-        return $result ?: array_fill_keys([ 'province', 'city', 'district' ], null) + [ 'address' => $address ];
+        return $result ?: array_fill_keys(['province', 'city', 'district'], null) + ['address' => $address];
     }
 
     /**
@@ -228,7 +228,7 @@ class AddressParser
             array_splice($result, 2, 0, '');
         }
 
-        return array_combine([ 'province', 'city', 'district', 'address' ], $result);
+        return array_combine(['province', 'city', 'district', 'address'], $result);
     }
 
     /**
@@ -268,7 +268,7 @@ class AddressParser
         }
 
         // if ($left) { $address = end($match); $match[key($match)] = $left . $address; }
-        return array_combine([ 'province', 'city', 'district', 'address' ], $match);
+        return array_combine(['province', 'city', 'district', 'address'], $match);
     }
 
     /**
@@ -282,7 +282,7 @@ class AddressParser
     protected function extractReverseFuzzy($address)
     {
         $province = $city = $district = '';
-        $address = str_replace([ ' ', ',' ], '', $address); // '自治区', '自治州' --> '省', '州'
+        $address = str_replace([' ', ','], '', $address); // '自治区', '自治州' --> '省', '州'
         $xianPos = mb_strpos($address, '县');
         $quPos = $this->getQuPosition($address); // mb_strpos($address, '区')
         $qiPos = mb_strpos($address, '旗');
@@ -294,6 +294,9 @@ class AddressParser
             if ($shiPos = mb_strrpos(mb_substr($address, 0, $quPos - 1), '市')) {
                 $district = mb_substr($address, $shiPos + 1, $quPos - $shiPos);
                 $city = mb_substr($address, $shiPos - 2, 3);
+                if (mb_strpos($city, '市') === 1) {
+                    $city = mb_substr($address, $shiPos - 3, 3);
+                }
             } else {
                 $district = $quPos === 1 ? mb_substr($address, 0, 2) : mb_substr($address, $quPos - 2, 3);
             }
@@ -345,7 +348,7 @@ class AddressParser
 
         $result = compact('province', 'city', 'district');
 
-        return array_filter($result) ? $result + [ 'address' => func_get_arg(0) ] : false; // 自治区、自治州被替换后要还原，所以 address 取原始值
+        return array_filter($result) ? $result + ['address' => func_get_arg(0)] : false; // 自治区、自治州被替换后要还原，所以 address 取原始值
     }
 
     /**
@@ -464,7 +467,7 @@ class AddressParser
         $districtArea = $this->lookup($districts ?? [], $target ?: mb_substr($address, 0, 2));
 
         if (isset($districtArea) && $target == '') {
-            $address = str_replace([ $districtArea['name']/*, mb_substr($address, 0, 2)*/ ], '', $address);
+            $address = str_replace([$districtArea['name']/*, mb_substr($address, 0, 2)*/], '', $address);
         } elseif (!isset($districtArea) && $target) {
             $address = $target . ' ' . $address;
         }
@@ -505,9 +508,7 @@ class AddressParser
                 }
             }
             if (!empty($results)) {
-                // 排序只保留权重最高的10个
-                array_multisort(array_column($results, 'weight'), SORT_DESC, $results);
-                $results = array_splice($results, 0, 10);
+                $results = $this->sortByWeightAndSlice($results);
             }
         }
 
@@ -526,25 +527,20 @@ class AddressParser
                         'district_id' => $districtArea['id'] ?? null,
                         'address'     => $address,
                     ], 1);
-                    $cityResults[] = $thisResult;
+                    $results[] = $thisResult;
                 }
             }
-            // 提取到的“市”可能是一个县级市
-            if (empty($cityResults) && strcmp(mb_substr($city, -1), '市') === 0) {
+
+            if (!empty($results)) {
+                $results = $this->sortByWeightAndSlice($results);
+            } elseif (strcmp(mb_substr($city, -1), '市') === 0) { // 提取到的“市”可能是一个县级市
                 return $this->correctReverse($province, '', $city, $address);
-            }
-            if (!empty($cityResults)) {
-                // 排序只保留权重最高的10个
-                array_multisort(array_column($cityResults, 'weight'), SORT_DESC, $cityResults);
-                $results = array_merge($results ?? [], array_splice($cityResults, 0, 10));
             }
         }
 
         if (empty($results)) {
             return false;
         }
-        // 权重排序
-        array_multisort(array_column($results, 'weight'), SORT_DESC, $results);
 
         if ($city) {
             foreach ($results as $result) {
@@ -562,16 +558,12 @@ class AddressParser
 
         $result = current($results);
 
-        end: {
+        end:
         /** @see \Illuminate\Support\Arr::only() 模仿实现 */
-        $search = array_filter(array_intersect_key($result, array_flip([ 'province', 'city', 'district' ])));
-        array_walk($search, function ($val, $key) use (&$searchArr) {
-            $searchArr[$key] = $val;
-            $searchArr[$key . '_copy'] = str_replace([ '省', '自治区', '洲', '市', '区' ], ' ', $val);
-        });
-        ksort($searchArr);
-        $result['address'] = trim(str_replace($searchArr, ' ', $address));
-    }
+        $search = array_filter(array_intersect_key($result, array_flip(['province', 'city', 'district'])));
+        ksort($search);
+        array_push($search, mb_substr($result['province'], 0, mb_strlen($result['province']) - 1), $city, $district);
+        $result['address'] = trim(str_replace($search, ' ', $address));
 
         return $result;
     }
@@ -662,14 +654,14 @@ class AddressParser
 
     /**
      * 地址查询 权重计算
-     * @param $search
-     * @param $possible
-     * @param $level
-     * @return mixed
+     * @param string $search
+     * @param array $possible
+     * @param int $level 1 市级 2 区级
+     * @return array
      */
-    private function weightCalculation($search, $possible, $level)
+    protected function weightCalculation(string $search, array $possible, int $level)
     {
-        $possibleLevels = [ $possible['province'] ];
+        $possibleLevels = [$possible['province']];
         if ($level > 0) $possibleLevels[] = $possible['city'];
         if ($level > 1) $possibleLevels[] = $possible['district'];
         // 可能的省市县
@@ -681,7 +673,7 @@ class AddressParser
 
         // 单字符重叠权重计算
         $intersectArr = array_intersect(
-            $realArr = $this->mbStrSplit($realAddress), $possibleArr = $this->mbStrSplit($possibleAddress)
+            $realArr = mb_str_split($realAddress), $possibleArr = mb_str_split($possibleAddress)
         );
         $single = floatval(
             round(($radioCount = count($intersectArr)) / ($realCount = count($realArr)), 2)
@@ -703,58 +695,11 @@ class AddressParser
         return $possible;
     }
 
-    /**
-     * (PHP 7 >= 7.4.0, PHP 8)
-     * mb_str_split — Given a multibyte string, return an array of its characters
-     * @param $string
-     * @param int $split_length
-     * @param null $encoding
-     * @return array|false|null
-     */
-    private function mbStrSplit($string, int $split_length = 1, $encoding = null)
+    protected function sortByWeightAndSlice(array $array, int $length = 10)
     {
-        if (null !== $string && !\is_scalar($string) &&
-            !(\is_object($string) && \method_exists($string, '__toString'))) {
-            trigger_error('mb_str_split(): expects parameter 1 to be string, ' .
-                \gettype($string) . ' given', E_USER_WARNING);
-            return null;
-        }
-        if ($split_length !== null && !\is_bool($split_length) && !\is_numeric($split_length)) {
-            trigger_error('mb_str_split(): expects parameter 2 to be int, ' .
-                \gettype($split_length) . ' given', E_USER_WARNING);
-            return null;
-        }
-        $split_length = (int)$split_length;
-        if (1 > $split_length) {
-            trigger_error('mb_str_split(): The length of each segment must be greater than zero',
-                E_USER_WARNING);
-            return false;
-        }
-        $encoding = is_null($encoding) ? mb_internal_encoding() : (string)$encoding;
-        if (!in_array($encoding, mb_list_encodings(), true)) {
-            static $aliases;
-            if ($aliases === null) {
-                $aliases = [];
-                foreach (mb_list_encodings() as $encoding) {
-                    $encoding_aliases = mb_encoding_aliases($encoding);
-                    if ($encoding_aliases) {
-                        foreach ($encoding_aliases as $alias) {
-                            $aliases[] = $alias;
-                        }
-                    }
-                }
-            }
-            if (!in_array($encoding, $aliases, true)) {
-                trigger_error('mb_str_split(): Unknown encoding "' . $encoding . '"', E_USER_WARNING);
-                return null;
-            }
-        }
-        $result = [];
-        $length = mb_strlen($string, $encoding);
-        for ($i = 0; $i < $length; $i += $split_length) {
-            $result[] = mb_substr($string, $i, $split_length, $encoding);
-        }
+        // 排序只保留权重最高的10个
+        array_multisort(array_column($array, 'weight'), SORT_DESC, $array);
 
-        return $result;
+        return array_slice($array, 0, $length);
     }
 }
