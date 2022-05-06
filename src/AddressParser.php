@@ -50,7 +50,7 @@ class AddressParser
      * $quString = preg_replace('#([小校园社发])区#Uu', '{$1QU}', $quString);
      * $quString = str_replace($chi = ['小区', '校区', '园区', '社区', '开发区'], $rep = ['{小QU}', '{校QU}', '{园QU}', '{社QU}', '{开发QU}'], $quString);
      */
-    protected $qu_interference_words = ['小', '校', '园', '社', '治'];
+    protected $qu_interference_words = ['小', '校', '园', '社', '治', '地'];
 
     /**
      * AddressParser constructor.
@@ -467,17 +467,17 @@ class AddressParser
      */
     protected function matchDistrict(array $districts, ?string $target, string $address): ?array
     {
-        if ($target) {
-            return $this->lookup($districts, $target); // 失败了可以继续找，最好是设置精确度'accuracy'配置项
-        } else {
-            foreach ($districts as $area) {
-                $possibleDistrict = mb_strlen($area['name']) > 2
-                    ? mb_substr($area['name'], 0, -1)
-                    : $area['name'];
+        if ($target && !is_null($area = $this->lookup($districts, $target))) { // @accuracy
+            return $area;
+        }
 
-                if (mb_strrpos($address, $possibleDistrict) !== false) {
-                    return $area;
-                }
+        foreach ($districts as $area) {
+            $possibleDistrict = mb_strlen($area['name']) > 2
+                ? mb_substr($area['name'], 0, -1)
+                : $area['name'];
+
+            if (mb_strrpos($address, $possibleDistrict) !== false) {
+                return $area;
             }
         }
 
@@ -503,7 +503,7 @@ class AddressParser
                 foreach ($provinceArea['children'] ?? [] as $cityArea) {
                     $districtArea = $this->lookup($cityArea['children'] ?? [], $district);
 
-                    if ($districtArea && (!$city || mb_strpos($cityArea['name'], $city) !== false)) {
+                    if ($districtArea) {// @accuracy && (!$city || mb_strpos($cityArea['name'], $city) !== false)
                         $results[] = [
                             'province'    => $provinceArea['name'],
                             'province_id' => $provinceArea['id'],
@@ -544,26 +544,28 @@ class AddressParser
             return false;
         }
 
-        foreach ($results as $result) {
-            if ($province &&
-                mb_strpos($result['province'], $province) !== false ||
-                mb_strpos($address, $result['province']) !== false) {
-                goto end;
+        if (count($results) > 1) {
+            foreach ($results as $result) {
+                if ($province &&
+                    mb_strpos($result['province'], $province) !== false ||
+                    mb_strpos($address, $result['province']) !== false) {
+                    goto end;
+                }
             }
-        }
 
-        foreach ($results as &$result) {
-            $result['weight'] = $district ?
-                $this->calculateWeight(
-                    mb_strstr($address, $district) . $district,
-                    $result['province'] . $result['city'] . $result['district']
-                ) : $this->calculateWeight(
-                    mb_strstr($address, $city) . $city,
-                    $result['province'] . $result['city']
-                );
-        }
+            foreach ($results as &$result) {
+                $result['weight'] = $district ?
+                    $this->calculateWeight(
+                        mb_strstr($address, $district) . $district,
+                        $result['province'] . $result['city'] . $result['district']
+                    ) : $this->calculateWeight(
+                        mb_strstr($address, $city) . $city,
+                        $result['province'] . $result['city']
+                    );
+            }
 
-        $results = $this->sortByWeightAndSlice($results);
+            $results = $this->sortByWeightAndSlice($results);
+        }
 
         $result = current($results);
 
