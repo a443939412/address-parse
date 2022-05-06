@@ -45,12 +45,12 @@ class AddressParser
      * 指定“区”干扰字
      *
      * @var string[]
-     * @internal 如：'小区', '校区', '园区', '社区', '自治区'
+     * @internal 如：'小区', '校区', '园区', '社区', '自治区', '投资区'
      * 经测试 str_replace 替换方式性能更优
      * $quString = preg_replace('#([小校园社发])区#Uu', '{$1QU}', $quString);
      * $quString = str_replace($chi = ['小区', '校区', '园区', '社区', '开发区'], $rep = ['{小QU}', '{校QU}', '{园QU}', '{社QU}', '{开发QU}'], $quString);
      */
-    protected $qu_interference_words = ['小', '校', '园', '社', '治', '地'];
+    protected $qu_interference_words = ['小', '校', '园', '社', '治', '地', '资'];
 
     /**
      * AddressParser constructor.
@@ -291,22 +291,35 @@ class AddressParser
             $district = mb_substr($address, $qiPos - 1, 2);
         } elseif ($quPos && $quPos < $refPos && (!$xianPos || $xianPos == $quPos + 1)) {
             if ($shiPos = mb_strrpos(mb_substr($address, 0, $quPos - 1), '市')) {
+                /***************************/
                 $district = mb_substr($address, $shiPos + 1, $quPos - $shiPos);
                 $city = mb_substr($address, $shiPos - 2, 3);
                 if (mb_strpos($city, '市') === 1) {
                     $city = mb_substr($address, $shiPos - 3, 3);
+                } elseif ($shiPos = mb_strpos(mb_substr($address, 0, $shiPos - 1), '市')) {
+                    $district = $city;
+                    $city = mb_substr($address, $shiPos - 2, 3);
                 }
+                /***************************/
             } else {
                 $district = $quPos === 1 ? mb_substr($address, 0, 2) : mb_substr($address, $quPos - 2, 3);
             }
         } elseif ($xianPos && $xianPos < $refPos) {
             if ($shiPos = mb_strrpos(mb_substr($address, 0, $xianPos - 1), '市')) {
+                /***************************/
                 $district = mb_substr($address, $shiPos + 1, $xianPos - $shiPos);
                 $city = mb_substr($address, $shiPos - 2, 3);
+                if (mb_strpos($city, '市') === 1) {
+                    $city = mb_substr($address, $shiPos - 3, 3);
+                } elseif ($shiPos = mb_strpos(mb_substr($address, 0, $shiPos - 1), '市')) {
+                    $district = $city;
+                    $city = mb_substr($address, $shiPos - 2, 3);
+                }
+                /***************************/
             } else {
-                //考虑形如【甘肃省东乡族自治县布楞沟村1号】的情况
-                if (mb_strpos($address, '自治县')) {
-                    $district = mb_substr($address, $xianPos - 4, 7);
+                if ($zizhiXianPos = mb_strpos($address, '自治县')) {
+                    //考虑形如【甘肃省东乡族自治县布楞沟村1号】的情况
+                    $district = mb_substr($address, $zizhiXianPos - 3, 6);
                 } else {
                     // @FIXME 两个字的县名：赵县，怎么办？
                     $district = $xianPos === 1 ? mb_substr($address, 0, 2) : mb_substr($address, $xianPos - 2, 3);
@@ -657,8 +670,8 @@ class AddressParser
         // array_push($search, mb_substr($result['province'], 0, mb_strlen($result['province']) - 1), $city, $district);
 
         foreach ($search as $val) {
-            if (2 < $len = mb_strlen($val)) {
-                $search[] = mb_substr($val, 0, $len - 1);
+            if (2 < mb_strlen($val)) {
+                $search[] = mb_substr($val, 0, - 1);
             }
         }
 
