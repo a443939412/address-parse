@@ -17,7 +17,7 @@ class AddressParser
      *
      * @var string
      */
-    const VERSION = '2.1.2';
+    const VERSION = '2.1.3';
 
     /**
      * @var array|\ArrayAccess
@@ -50,7 +50,7 @@ class AddressParser
      * $quString = preg_replace('#([小校园社发])区#Uu', '{$1QU}', $quString);
      * $quString = str_replace($chi = ['小区', '校区', '园区', '社区', '开发区'], $rep = ['{小QU}', '{校QU}', '{园QU}', '{社QU}', '{开发QU}'], $quString);
      */
-    protected $qu_interference_words = ['小', '校', '园', '社', '治', '地', '资'];
+    protected $qu_interference_words = ['小', '校', '园', '社', '治', '资']; // '地'：阿里地区
 
     /**
      * AddressParser constructor.
@@ -189,6 +189,10 @@ class AddressParser
             $result = $this->correctReverse(...array_values($result));
         }
 
+        if (!$result && $strict) {
+            $result = $this->verbatimParse($address);
+        }
+
         return $result;
     }
 
@@ -275,7 +279,7 @@ class AddressParser
      * @param string $address
      * @return array|null 省，市，区，街道地址
      * @internal 反向查找：从区级 -> 市级 -> 省级
-     *
+     * @version 2.1.3 兼容：福建省古田县城西街道汇诚国际19幢一单元202室  【县城被跳过】
      * @author pupuk<pujiexuan@gmail.com>, zifan<s443939412@163.com>
      */
     protected function extractReverseFuzzy($address): ?array
@@ -347,6 +351,10 @@ class AddressParser
             $province = mb_substr($address, $shengPos - 3, 6);
         } elseif ($shengPos = mb_strrpos($address, '省')) {
             $province = mb_substr($address, $shengPos - 2, 3);
+        }
+
+        if ($province && !$city && !$district && $pos = mb_strpos($address, '县') ?: $pos = mb_strpos($address, '区')) {
+            $district = mb_substr($address, $pos - 2, 3);
         }
 
         $result = compact('province', 'city', 'district');
@@ -678,6 +686,83 @@ class AddressParser
         $detail = str_replace($search, ' ', $result['address']);
 
         $result['address'] = ltrim($detail, ' ');
+    }
+
+    /**
+     * @param string $address
+     * @return array|false
+     * @since v2.1.3
+     */
+    protected function verbatimParse(string $address)
+    {
+        $areas = $this->getAreas();
+
+        foreach ($areas as $area) {
+            $needle = preg_match('#[\x{4e00}-\x{9fa5}]+(?=省$|自治区$|市$)#u', $area['name'], $matches)
+                ? $matches[0]
+                : $area['name'];
+
+            if (false !== $provPos = mb_strrpos($address, $needle)) {
+                $provinceArea = $area;
+                break;
+            }
+        }
+
+        $address = mb_substr($address, $provPos + 2);
+
+        if (is_null($provinceArea)) {
+            foreach ($areas as $area) {
+                foreach ($area['children'] as $area2) {
+                    $needle = mb_strlen($area2['name']) >= 2
+                        ? mb_substr($area2['name'], 0, -1)
+                        : $area2['name'];
+
+                    if (false !== $cityPos = mb_strrpos($address, $needle)) {
+                        $cityArea = $area2;
+                        $provinceArea = $area;
+                        break;
+                    }
+                }
+            }
+        } else {
+            foreach ($area['children'] as $area2) {
+                $needle = mb_strlen($area2['name']) >= 2
+                    ? mb_substr($area2['name'], 0, -1)
+                    : $area2['name'];
+
+                if (false !== $cityPos = mb_strrpos($address, $needle)) {
+                    $cityArea = $area2;
+                    break;
+                }
+            }
+        }
+
+        if (empty($cityArea)) {
+            return false;
+        }
+
+        $address = mb_substr($address, $cityPos + 2);
+
+        foreach ($cityArea['children'] as $area) {
+            $needle = mb_strlen($area['name']) >= 2
+                ? mb_substr($area['name'], 0, -1)
+                : $area['name'];
+
+            if (false !== mb_strrpos($address, $needle)) {
+                $districtArea = $area;
+                break;
+            }
+        }
+
+        return [
+            'province'    => $provinceArea['name'],
+            'province_id' => $provinceArea['id'],
+            'city'        => $cityArea['name'],
+            'city_id'     => $cityArea['id'],
+            'district'    => $districtArea['name'] ?? null,
+            'district_id' => $districtArea['id'] ?? null,
+            'address'     => $address
+        ];
     }
 
     /**
