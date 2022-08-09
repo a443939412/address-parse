@@ -679,7 +679,7 @@ class AddressParser
 
         foreach ($search as $val) {
             if (2 < mb_strlen($val)) {
-                $search[] = mb_substr($val, 0, - 1);
+                $search[] = mb_substr($val, 0, -1);
             }
         }
 
