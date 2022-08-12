@@ -710,7 +710,18 @@ class AddressParser
 
         $address = mb_substr($address, $provPos + 2);
 
-        if (is_null($provinceArea)) {
+        if (isset($provinceArea)) {
+            foreach ($area['children'] as $area2) {
+                $needle = mb_strlen($area2['name']) >= 2
+                    ? mb_substr($area2['name'], 0, -1)
+                    : $area2['name'];
+
+                if (false !== $cityPos = mb_strrpos($address, $needle)) {
+                    $cityArea = $area2;
+                    break;
+                }
+            }
+        } else {
             foreach ($areas as $area) {
                 foreach ($area['children'] as $area2) {
                     $needle = mb_strlen($area2['name']) >= 2
@@ -722,17 +733,6 @@ class AddressParser
                         $provinceArea = $area;
                         break;
                     }
-                }
-            }
-        } else {
-            foreach ($area['children'] as $area2) {
-                $needle = mb_strlen($area2['name']) >= 2
-                    ? mb_substr($area2['name'], 0, -1)
-                    : $area2['name'];
-
-                if (false !== $cityPos = mb_strrpos($address, $needle)) {
-                    $cityArea = $area2;
-                    break;
                 }
             }
         }
