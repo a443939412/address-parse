@@ -137,7 +137,7 @@ class AddressParser
     /**
      * @return $this
      */
-    public function release()
+    public function release(): self
     {
         static::$areas = null;
 
@@ -151,6 +151,10 @@ class AddressParser
      */
     public function handle(string $address)
     {
+        if ($address === '') {
+            return null;
+        }
+
         $result = $this->parse($address);
 
         // Parse detailed address
@@ -210,7 +214,7 @@ class AddressParser
      * 2) char_length()：单位为字符，不管汉字还是数字或者是字母都算是一个字符。
      * 3) character_length(): 同 char_length
      */
-    protected function extractIfRegular($address): ?array
+    protected function extractIfRegular(string $address): ?array
     {
         $result = preg_split('/[\s\.，,]+/u', $address, 4);
 
