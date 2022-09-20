@@ -27,9 +27,26 @@ $ composer require zifan/addressparser
 
 ## Usage
 
-$parser = new AddressParser();
+$options = ['strict' => true]
 
-$parser->smart('浙江省杭州市滨江区西兴街道滨康路228号万福中心A座21楼');
+$parser = new AddressParser($options);
+
+$parser->handle('浙江省杭州市滨江区西兴街道滨康路228号万福中心A座21楼');
+
+## Array $options Like: [
+ *     'dataProvider' => [
+ *         'driver' => 'file'         // 驱动，默认file，其它方式（如数据模型）可自行扩展
+ *         'path' => '',              // 指定省市区数据文件，默认从插件中config文件夹中读取
+ *     ],
+ *     'extra' => [                   // 额外提取字段
+ *         'sub_district' => false,   // 村乡镇/街道（准确度低）
+ *         'idn' => false,            // 身份证号
+ *         'mobile' => false,         // 联系方式（手机号/座机号）
+ *         'postcode' => false,       // 邮编
+ *         'person' => false,         // 姓名（准确度低）
+ *     ],
+ *     'strict' => true,              // 是否对提取结果进行准确度校验、补齐
+ * ]
 
 ## Change log
 

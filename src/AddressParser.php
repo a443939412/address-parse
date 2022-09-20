@@ -75,7 +75,7 @@ class AddressParser
      *         'postcode' => false,       // 邮编
      *         'person' => false,         // 姓名（准确度低）
      *     ],
-     *     'strict' => true,              // 是否对提取结果进行准确度校验
+     *     'strict' => true,              // 是否对提取结果进行准确度校验、补齐
      * ]
      * @return $this
      */
