@@ -65,7 +65,8 @@ class AddressParser
     /**
      * @param array $options Like: [
      *     'dataProvider' => [
-     *         'driver' => 'file'
+     *         'driver' => 'file'         // 驱动，默认file，其它方式（如数据模型）可自行扩展
+     *         'path' => '',              // 指定省市区数据文件，默认从插件中config文件夹中读取
      *     ],
      *     'interference_words' => [],    // 干扰词
      *     'extra' => [                   // 额外提取字段
