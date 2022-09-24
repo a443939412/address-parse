@@ -924,7 +924,7 @@ class AddressParser
         }*/
 
         foreach (explode($delimiter, $string) as $substring) { // preg_split('/\s+/', $string)
-            if ($delimiter === ' ') {
+            if ($delimiter !== ' ') {
                 $substring = trim($substring);
             }
 
