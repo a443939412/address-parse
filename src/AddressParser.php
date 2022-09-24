@@ -17,7 +17,7 @@ class AddressParser
      *
      * @var string
      */
-    const VERSION = '2.1.3';
+    const VERSION = '2.2.1';
 
     /**
      * @var array|\ArrayAccess
@@ -30,6 +30,13 @@ class AddressParser
     protected $config = [
         'dataProvider' => [
             'driver' => 'file'
+        ],
+        'enable_keywords_split' => false,
+        'keywords' => [
+            'person' => ['收货人', '收件人', '姓名'],
+            'mobile' => ['手机号码', '手机', '联系方式', '电话号码', '电话'],
+            //'address' => ['所在地区', '地址'] 不需要
+            //'detail_address' => ['详细地址'] 不需要
         ]
     ];
 
@@ -63,24 +70,28 @@ class AddressParser
     }
 
     /**
-     * @param array $options Like: [
+     * @param array $options Like: <pre>[
      *     'dataProvider' => [
-     *         'driver' => 'file'         // 驱动，默认file，其它方式（如数据模型）可自行扩展
-     *         'path' => '',              // 指定省市区数据文件，默认从插件config文件夹中读取
+     *         'driver' => 'file'            // 驱动，默认file，其它方式（如数据模型）可自行扩展
+     *         'path' => null,               // 指定省市区数据文件，默认从插件config文件夹中读取
      *     ],
-     *     'interference_words' => [],    // 干扰词
-     *     'extra' => [                   // 额外提取字段
-     *         'sub_district' => false,   // 村乡镇/街道（准确度低）
-     *         'idn' => false,            // 身份证号
-     *         'mobile' => false,         // 联系方式（手机号/座机号）
-     *         'postcode' => false,       // 邮编
-     *         'person' => false,         // 姓名（准确度低）
+     *     'enable_keywords_split' => false, // 是否启用关键词分割（如淘宝、京东在复制收货地址时带固定格式）拼多多不带关键字，只是格式固定
+     *     'keywords' => [                   // enable_keywords_split 为 true 时才生效
+     *         'person' => ['收货人', '收件人', '姓名'],
+     *         'mobile' => ['手机号码', '手机', '联系方式', '电话号码', '电话'],
      *     ],
-     *     'strict' => true,              // 是否对提取结果进行准确度校验、补齐
-     * ]
+     *     'extra' => [                      // 额外提取字段
+     *         'sub_district' => false,      // 村乡镇/街道（准确度低）
+     *         'idn' => false,               // 身份证号
+     *         'mobile' => false,            // 联系方式（手机号/座机号）
+     *         'postcode' => false,          // 邮编
+     *         'person' => false,            // 姓名（准确度低）
+     *     ],
+     *     'strict' => true,                 // 是否对提取结果进行准确度校验、补齐
+     * ]</pre>
      * @return $this
      */
-    public function config(array $options)
+    public function config(array $options): self
     {
         $this->config = array_replace_recursive($this->config, $options);
 
@@ -156,11 +167,16 @@ class AddressParser
             return null;
         }
 
-        $result = $this->parse($address);
+        if ($this->config['enable_keywords_split'] ?? false) {
+            $portion = $this->extractViaKeywords($address);
+        }
 
-        // Parse detailed address
-        if ($result) {
+        if ($result = $this->parse($address)) {
             $this->clearUpProvinceCityDistrict($result);
+        }
+
+        if (isset($portion)) {
+            $result = array_merge($result ?: [], $portion);
         }
 
         // Parse extra fields
@@ -170,6 +186,69 @@ class AddressParser
         }
 
         return $result;
+    }
+
+    /**
+     * 切割并解析带格式格式的地址（如：换行、空格分割，且带识别关键字），如果地址是无固定格式的，则不处理并返回null
+     * @param string $address
+     * @return array
+     */
+    protected function extractViaKeywords(string &$address): ?array
+    {
+        if (strpos($address, "\n") !== false) { // substr_count($address, "\n") > 1
+            $array = array_filter(explode("\n", $address));
+        } elseif (strpos($address, ' ') !== false) {
+            $array = array_filter(explode(' ', $address));
+        }
+
+        if (!isset($array)) {
+            return null;
+        }
+        // 多维数组转一维数组
+        // array_walk_recursive($this->config['keywords'], function ($item) use (&$keywords) { $keywords[] = $item; });
+        $extra = array_filter($this->config['extra'] ?? []);
+
+        foreach ($array as $key => &$item) {
+            if (count($its = preg_split('/[:：]/u', $item, 2)) > 1) {
+                $item = end($its);
+            }
+
+            foreach ($this->config['keywords']['person'] ?? [] as $words) {
+                if (mb_strpos($item, $words) !== false) {
+                    unset($array[$key]);
+
+                    if (isset($extra['person'])) {
+                        $result['person'] = trim(count($its) > 1 ? $item : str_replace($words, '', $item));
+                        unset($this->config['extra']['person']);
+                    }
+
+                    break;
+                }
+            }
+
+            foreach ($this->config['keywords']['mobile'] ?? [] as $words) {
+                if (mb_strpos($item, $words) !== false) {
+                    unset($array[$key]);
+
+                    if (isset($extra['mobile'])) {
+                        $mobile = count($its) > 1 ? $item : str_replace($words, '', $item);
+
+                        $mobile = preg_replace('/0-|0?(\d{3})[ -](\d{4})[ -](\d{4})/', '$1$2$3', $mobile);
+
+                        if (preg_match('/(?<!\d)1[0-9]{10}(?!\d)|(?<!\d)(?:\d{3,4}\-)?\d{8}(?:\-\d+)?(?!\d)/U', $mobile, $match)) {
+                            $result['mobile'] = match[0];
+                            unset($this->config['extra']['mobile']);
+                        }
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        $address = implode(' ', $array);
+
+        return $result ?? null;
     }
 
     /**
@@ -429,13 +508,13 @@ class AddressParser
         }
 
         return [
-            'province'    => $provinceArea['name'],
+            'province' => $provinceArea['name'],
             'province_id' => $provinceArea['id'],
-            'city'        => $cityArea['name'],
-            'city_id'     => $cityArea['id'],
-            'district'    => $districtArea['name'] ?? null,
+            'city' => $cityArea['name'],
+            'city_id' => $cityArea['id'],
+            'district' => $districtArea['name'] ?? null,
             'district_id' => $districtArea['id'] ?? null,
-            'address'     => $address
+            'address' => $address
         ];
     }
 
@@ -531,11 +610,11 @@ class AddressParser
 
                     if ($districtArea) {// @accuracy && (!$city || mb_strpos($cityArea['name'], $city) !== false)
                         $results[] = [
-                            'province'    => $provinceArea['name'],
+                            'province' => $provinceArea['name'],
                             'province_id' => $provinceArea['id'],
-                            'city'        => $cityArea['name'],
-                            'city_id'     => $cityArea['id'],
-                            'district'    => $districtArea['name'],
+                            'city' => $cityArea['name'],
+                            'city_id' => $cityArea['id'],
+                            'district' => $districtArea['name'],
                             'district_id' => $districtArea['id']
                         ];
                     }
@@ -551,11 +630,11 @@ class AddressParser
                     $districtArea = $this->matchDistrict($cityArea['children'] ?? [], $district, $address);
 
                     $results[] = [
-                        'province'    => $provinceArea['name'],
+                        'province' => $provinceArea['name'],
                         'province_id' => $provinceArea['id'],
-                        'city'        => $cityArea['name'],
-                        'city_id'     => $cityArea['id'],
-                        'district'    => $districtArea['name'] ?? null,
+                        'city' => $cityArea['name'],
+                        'city_id' => $cityArea['id'],
+                        'district' => $districtArea['name'] ?? null,
                         'district_id' => $districtArea['id'] ?? null
                     ];
                 }
@@ -624,6 +703,7 @@ class AddressParser
      * @param string $real
      * @param string $possible
      * @return float
+     * @internal mb_str_split required PHP >= 7.4，但"symfony/polyfill-mbstring": "^1.13"扩展定义了该函数
      */
     protected function calculateWeight(string $real, string $possible): float
     {
@@ -662,8 +742,9 @@ class AddressParser
      */
     protected function sortByWeightAndSlice(array $array, int $length = 10): array
     {
-        // 疑问：第一个参数明明是传址引用，这里怎么不报错？
-        array_multisort(array_column($array, 'weight'), SORT_DESC, $array);
+        $weights = array_column($array, 'weight');
+        // 疑问：第一个参数明明是传址引用，直接array_column($array, 'weight')怎么不报错？
+        array_multisort($weights, SORT_DESC, $array);
 
         return array_slice($array, 0, $length);
     }
@@ -760,13 +841,13 @@ class AddressParser
         }
 
         return [
-            'province'    => $provinceArea['name'],
+            'province' => $provinceArea['name'],
             'province_id' => $provinceArea['id'],
-            'city'        => $cityArea['name'],
-            'city_id'     => $cityArea['id'],
-            'district'    => $districtArea['name'] ?? null,
+            'city' => $cityArea['name'],
+            'city_id' => $cityArea['id'],
+            'district' => $districtArea['name'] ?? null,
             'district_id' => $districtArea['id'] ?? null,
-            'address'     => $address
+            'address' => $address
         ];
     }
 
@@ -795,44 +876,70 @@ class AddressParser
             $string = str_replace($match[0], ' ', $string);
         }
 
-        // 提取联系方式
-        if (isset($extra['mobile'])) {
+        // 提取联系方式、姓名
+        if (isset($extra['mobile']) || isset($extra['person'])) {
             // 去除手机号码中的短横线 如136-3333-6666 主要针对苹果手机
-            $string = preg_replace('/0-|0?(\d{3})-(\d{4})-(\d{4})/', '$1$2$3', $string);
-            // /\d{7,11}|\d{3,4}-\d{6,8}/
-            if (preg_match('/1[0-9]{10}|(?:\d{3,4}\-)?\d{8}(?:\-\d+)?/U', $string, $match)) {
-                $compose['mobile'] = $match[0];
-                $string = str_replace($match[0], ' ', $string);
+            $string = preg_replace('/0-|0?(\d{3})[ -](\d{4})[ -](\d{4})/', '$1$2$3', $string);
+
+            if (preg_match('/(?<!\d)1[0-9]{10}(?!\d)|(?<!\d)(?:\d{3,4}\-)?\d{8}(?:\-\d+)?(?!\d)/U', $string, $match)) {
+                if (isset($extra['person'])) {
+                    $compose['person'] = $this->getShortestSubstring($string, $match[0]); // 姓名通常位于手机号前面或者后面
+                }
+
+                if (isset($extra['mobile'])) {
+                    $compose['mobile'] = $match[0];
+                    $string = str_replace($match[0], ' ', $string);
+                }
             }
         }
 
         // 提取邮编
         if (isset($extra['postcode']) &&
-            preg_match('/\d{6}/U', $string, $match)) {
+            preg_match('/(?<!\d)\d{6}(?!\d)/U', $string, $match)) {
             $compose['postcode'] = $match[0];
             $string = str_replace($match[0], ' ', $string);
         }
 
-        // 提取姓名（最长名字貌似由15个字，不过只考虑一般情况提高准确性，取10个，TODO可以提取到配置文件）
-        if (isset($extra['person']) &&
-            preg_match('/(?:[一二三四五六七八九\d+](?:室|单元|号楼|期|弄|号|幢|栋)\d*)+ *([^一二三四五六七八九 室期弄号幢栋|单元|号楼|商铺|档口|A-Za-z0-9_#！!@（\(]{2,10}) *(?:\d{11})?$/Uu', $string, $match)) {
-            $compose['person'] = $match[1];
-            $string = str_replace($compose['person'], ' ', $string);
+        // 提取姓名
+        if (isset($extra['person']) && !isset($compose['person'])) {
+            $compose['person'] = $this->getShortestSubstring($string, ' '); // 不支持"\s"
         }
-        /*if (isset($extra['name']) &&
-            !empty($result = preg_split('/\s+/', $string))) {
-            // 按照空格切分后，片面的判断最短的为姓名（不是基于自然语言分析，只是采取统计学上高概率的方案）
-            $compose['name'] = $result[0];
-            foreach ($result as $value) {
-                if (mb_strlen($value) < mb_strlen($compose['name'])) {
-                    $compose['name'] = $value;
-                }
-            }
-            // $string = trim(str_replace($compose['name'], '', $string));
-        }*/
 
         $compose['address'] = str_replace(' ', '', $string);
 
         return $compose;
+    }
+
+    /**
+     * 通过概率提取最短字串（姓名）
+     * @param string $string
+     * @param string $delimiter
+     * @return string|null
+     * @internal 按照空白符或其他特定字符切分后，片面的判断最短的为姓名（不是基于自然语言分析，只是采取统计学上高概率的方案）
+     */
+    protected function getShortestSubstring(string &$string, string $delimiter): ?string
+    {
+        /*if (preg_match('/(?:[一二三四五六七八九\d+](?:室|单元|号楼|期|弄|号|幢|栋)\d*)+ *([^一二三四五六七八九 室期弄号幢栋元号楼铺口_#！!@（\(]{2,8})/Uu', $string, $match)) {preg_match('/(?:[一二三四五六七八九\d+](?:室|单元|号楼|期|弄|号|幢|栋)\d*)+ *([^一二三四五六七八九 室期弄号幢栋|单元|号楼|商铺|档口|A-Za-z0-9_#！!@（\(]{2,10}) *(?:\d{11})?$/Uu', $string, $match)) {
+            $compose['person'] = $match[1];
+        }*/
+
+        foreach (explode($delimiter, $string) as $substring) { // preg_split('/\s+/', $string)
+            if ($delimiter === ' ') {
+                $substring = trim($substring);
+            }
+
+            $length = mb_strlen($substring);
+
+            if ($length > 1 && $length <= 8 && (!isset($shortest) || $shortest > $length)) {
+                $shortest = $length;
+                $person = $substring;
+            }
+        }
+
+        if (isset($person)) {
+            $string = str_replace($person, ' ', $string);
+        }
+
+        return $person ?? null;
     }
 }
