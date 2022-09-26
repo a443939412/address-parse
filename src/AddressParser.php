@@ -17,7 +17,7 @@ class AddressParser
      *
      * @var string
      */
-    const VERSION = '2.2.1';
+    const VERSION = '2.2.3';
 
     /**
      * @var array|\ArrayAccess
