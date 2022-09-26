@@ -33,12 +33,15 @@ $parser = new AddressParser($options);
 
 $parser->handle('浙江省杭州市滨江区西兴街道滨康路228号万福中心A座21楼');
 
-## Array $options Like: [
+## Options 
+Array $options Like: 
+```
+[
     'dataProvider' => [
         'driver' => 'file'            // 驱动，默认file，其它方式（如数据模型）可自行扩展
         'path' => null,               // 指定省市区数据文件，默认从插件config文件夹中读取
     ],
-    'enable_keywords_split' => false, // 是否启用关键词分割（如淘宝、京东在复制收货地址时带固定格式）拼多多不带关键字，只是格式固定
+    'enable_keywords_split' => false, // 是否启用关键词分割（适用于在淘宝、京东App上复制收货地址时开启，固定格式，拼多多不带关键字只是格式固定）
     'keywords' => [                   // enable_keywords_split 为 true 时才生效
         'person' => ['收货人', '收件人', '姓名'],
         'mobile' => ['手机号码', '手机', '联系方式', '电话号码', '电话'],
@@ -50,8 +53,9 @@ $parser->handle('浙江省杭州市滨江区西兴街道滨康路228号万福中
         'postcode' => false,          // 邮编
         'person' => false,            // 姓名（准确度低）
     ],
-    'strict' => true,                 // 是否对提取结果进行准确度校验、补齐
+    'strict' => false,                // 是否对提取结果进行准确度校验、补齐
 ]
+```
 
 #### 京东格式
 姓名：张三

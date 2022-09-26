@@ -883,7 +883,7 @@ class AddressParser
 
             if (preg_match('/(?<!\d)1[0-9]{10}(?!\d)|(?<!\d)(?:\d{3,4}\-)?\d{8}(?:\-\d+)?(?!\d)/U', $string, $match)) {
                 if (isset($extra['person'])) {
-                    $compose['person'] = $this->getShortestSubstring($string, $match[0]); // 姓名通常位于手机号前面或者后面
+                    $compose['person'] = $this->getPersonClosestToMobile($string, $match[0]);
                 }
 
                 if (isset($extra['mobile'])) {
@@ -902,7 +902,7 @@ class AddressParser
 
         // 提取姓名
         if (isset($extra['person']) && !isset($compose['person'])) {
-            $compose['person'] = $this->getShortestSubstring($string, ' '); // 不支持"\s"
+            $compose['person'] = $this->getShortestSubstring($string);
         }
 
         $compose['address'] = str_replace(' ', '', $string);
@@ -911,28 +911,69 @@ class AddressParser
     }
 
     /**
+     * 获取最靠近“手机号”的子串（大概率是姓名）
+     * @param string $string
+     * @param string $mobile
+     * @return string|null
+     * @internal 姓名通常位于手机号前面或后面
+     */
+    protected function getPersonClosestToMobile(string &$string, string $mobile): ?string
+    {
+        // mb_strstr($string, $mobile, true), mb_substr(mb_strstr($string, $mobile), mb_strlen($mobile) + 1);
+        $array = explode($mobile, $string, 2);
+
+        foreach ($array as $item) {
+            if ($this->validatePerson($item = trim($item))) {
+                $person = $item;
+            }
+        }
+
+        if (!isset($person)) {
+            foreach ($array as $index => $item) {
+                if (count($array) > 1 && $index === 0) {
+                    $item = preg_split('/[\s\.，,]+/u', $item);
+                } else {
+                    $item = preg_split('/[\s\.，,]+/u', $item, 1);
+                }
+
+                if ($this->validatePerson($item = end($item))) {
+                    $person = $item;
+                }
+            }
+        }
+
+        if (isset($person)) {
+            $string = str_replace($person, ' ', $string);
+        }
+
+        return $person ?? null;
+    }
+
+    protected function validatePerson(string $string): bool
+    {
+        $length = mb_strlen($string);
+
+        return $length > 1 && $length < 8; // '/[\x{4e00}-\x{9fa5}A-Za-z\d_]+/Uu' (?=:|：)
+    }
+
+    /**
      * 通过概率提取最短字串（姓名）
      * @param string $string
-     * @param string $delimiter
      * @return string|null
      * @internal 按照空白符或其他特定字符切分后，片面的判断最短的为姓名（不是基于自然语言分析，只是采取统计学上高概率的方案）
      */
-    protected function getShortestSubstring(string &$string, string $delimiter): ?string
+    protected function getShortestSubstring(string &$string): ?string
     {
         /*if (preg_match('/(?:[一二三四五六七八九\d+](?:室|单元|号楼|期|弄|号|幢|栋)\d*)+ *([^一二三四五六七八九 室期弄号幢栋元号楼铺口_#！!@（\(]{2,8})/Uu', $string, $match)) {preg_match('/(?:[一二三四五六七八九\d+](?:室|单元|号楼|期|弄|号|幢|栋)\d*)+ *([^一二三四五六七八九 室期弄号幢栋|单元|号楼|商铺|档口|A-Za-z0-9_#！!@（\(]{2,10}) *(?:\d{11})?$/Uu', $string, $match)) {
             $compose['person'] = $match[1];
         }*/
 
-        foreach (explode($delimiter, $string) as $substring) { // preg_split('/\s+/', $string)
-            if ($delimiter !== ' ') {
-                $substring = trim($substring);
-            }
+        foreach (preg_split('/[\s\.，,]+/u', $string) as $item) {
+            $length = mb_strlen($item);
 
-            $length = mb_strlen($substring);
-
-            if ($length > 1 && $length <= 8 && (!isset($shortest) || $shortest > $length)) {
+            if ($this->validatePerson($item) && (!isset($shortest) || $shortest > $length)) {
                 $shortest = $length;
-                $person = $substring;
+                $person = $item;
             }
         }
 
