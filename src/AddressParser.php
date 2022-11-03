@@ -674,6 +674,10 @@ class AddressParser
 
         $result = current($results);
 
+        if ($province && mb_strpos($result['province'], $province) === false) {
+            return false;
+        }
+
         unset($result['weight']);
 
         end:
