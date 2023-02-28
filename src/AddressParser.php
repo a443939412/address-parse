@@ -798,13 +798,11 @@ class AddressParser
             }
         }
 
-        $address = mb_substr($address, $provPos + 2);
+        $address = mb_substr($address, $provPos + mb_strlen($needle));
 
         if (isset($provinceArea)) {
             foreach ($area['children'] as $area2) {
-                $needle = mb_strlen($area2['name']) >= 2
-                    ? mb_substr($area2['name'], 0, -1)
-                    : $area2['name'];
+                $needle = mb_substr($area2['name'], 0, 2);
 
                 if (false !== $cityPos = mb_strrpos($address, $needle)) {
                     $cityArea = $area2;
@@ -814,9 +812,9 @@ class AddressParser
         } else {
             foreach ($areas as $area) {
                 foreach ($area['children'] as $area2) {
-                    $needle = mb_strlen($area2['name']) >= 2
-                        ? mb_substr($area2['name'], 0, -1)
-                        : $area2['name'];
+                    $needle = mb_strrpos($area2['name'], '自治州')
+                        ? mb_substr($area2['name'], 0, -3)
+                        : mb_substr($area2['name'], 0, 2);
 
                     if (false !== $cityPos = mb_strrpos($address, $needle)) {
                         $cityArea = $area2;
@@ -834,9 +832,9 @@ class AddressParser
         $address = mb_substr($address, $cityPos + 2);
 
         foreach ($cityArea['children'] as $area) {
-            $needle = mb_strlen($area['name']) >= 2
-                ? mb_substr($area['name'], 0, -1)
-                : $area['name'];
+            $needle = mb_strrpos($area['name'], '自治县')
+                ? mb_substr($area['name'], 0, -3)
+                : mb_substr($area['name'], 0, 2);
 
             if (false !== mb_strrpos($address, $needle)) {
                 $districtArea = $area;
