@@ -661,10 +661,10 @@ class AddressParser
             foreach ($results as &$result) {
                 $result['weight'] = $district ?
                     $this->calculateWeight(
-                        mb_strstr($address, $district) . $district,
+                        mb_strstr($address, $district, true) . $district,
                         $result['province'] . $result['city'] . $result['district']
                     ) : $this->calculateWeight(
-                        mb_strstr($address, $city) . $city,
+                        mb_strstr($address, $city, true) . $city,
                         $result['province'] . $result['city']
                     );
             }
