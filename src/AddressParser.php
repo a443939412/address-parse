@@ -883,7 +883,7 @@ class AddressParser
             // 去除手机号码中的短横线 如136-3333-6666 主要针对苹果手机
             $string = preg_replace('/0-|0?(\d{3})[ -](\d{4})[ -](\d{4})/', '$1$2$3', $string);
 
-            if (preg_match('/(?<!\d)1[0-9]{10}(?!\d)|(?<!\d)(?:\d{3,4}\-)?\d{8}(?:\-\d+)?(?!\d)/U', $string, $match)) {
+            if (preg_match('/(?<!\d|\+)(?:\+?\d{2,}[ -])?1[0-9]{10}(?!\d)(?:-\d+)?|(?<!\d)(?:\d{3,4}\-)?\d{8}(?:\-\d+)?(?!\d)/', $string, $match)) {
                 if (isset($extra['person'])) {
                     $compose['person'] = $this->getPersonClosestToMobile($string, $match[0]);
                 }
@@ -926,7 +926,7 @@ class AddressParser
 
         foreach ($array as $item) {
             if ($this->validatePerson($item = trim($item))) {
-                $person = $item;
+                $person = str_replace(['.', '，', ','], '', $item);
             }
         }
 
