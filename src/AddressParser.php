@@ -235,7 +235,7 @@ class AddressParser
 
                         $mobile = preg_replace('/0-|0?(\d{3})[ -](\d{4})[ -](\d{4})/', '$1$2$3', $mobile);
 
-                        if (preg_match('/(?<!\d)1[0-9]{10}(?!\d)|(?<!\d)(?:\d{3,4}\-)?\d{8}(?:\-\d+)?(?!\d)/U', $mobile, $match)) {
+                        if (preg_match('/(?<!\d|\+)(?:\+?\d{2,}[ -])?1[0-9]{10}(?!\d)(?:-\d+)?|(?<!\d)(?:\d{3,4}\-)?\d{8}(?:\-\d+)?(?!\d)/', $mobile, $match)) {
                             $result['mobile'] = $match[0];
                             unset($this->config['extra']['mobile']);
                         }
